@@ -6,15 +6,23 @@ import (
 	"errors"
 	"fmt"
 	"processing/internal/decimal"
-	transfer "processing/internal/service"
+
 	"time"
 
 	"github.com/google/uuid"
 )
 
+type TransactionStatus string
+
+const (
+	StatusPending   TransactionStatus = "pending"
+	StatusCompleted TransactionStatus = "completed"
+	StatusFailed    TransactionStatus = "failed"
+)
+
 type TransactionStorage interface {
 	Transaction(ctx context.Context, tx *Transaction) error
-	UpdateStatus(ctx context.Context, id uuid.UUID, status transfer.TransactionStatus) error
+	UpdateStatus(ctx context.Context, id uuid.UUID, status TransactionStatus) error
 }
 
 type AccountsStorage interface {
@@ -27,7 +35,7 @@ type Transaction struct {
 	Amount      decimal.Decimal
 	Sender_id   uuid.UUID
 	Receiver_id uuid.UUID
-	Status      transfer.TransactionStatus
+	Status      TransactionStatus
 	Created_at  time.Time
 	Updated_at  time.Time
 }
@@ -64,8 +72,13 @@ type storage struct {
 	tx *sql.Tx
 }
 
-func NewStorage(db *sql.DB, tx *sql.Tx) *storage {
-	return &storage{db: db, tx: tx}
+func NewStorage(ctx context.Context, db *sql.DB) (*storage, error) {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("создание бд: %w", err)
+	}
+
+	return &storage{db: db, tx: tx}, nil
 }
 
 // Create - создаёт аккаунт и возвращает ID
@@ -105,7 +118,7 @@ func (s *storage) Transaction(ctx context.Context, tx *Transaction) error {
 }
 
 // UpdateStatus обновляет статус транзакции в бд
-func (s *storage) UpdateStatus(ctx context.Context, tx *Transaction, status transfer.TransactionStatus) error {
+func (s *storage) UpdateStatus(ctx context.Context, tx *Transaction, status TransactionStatus) error {
 	query := `UPDATE transactions SET status = $1 WHERE id = $2
 	RETURNING status, created_at, updated_at
 	`

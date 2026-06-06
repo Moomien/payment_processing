@@ -6,7 +6,6 @@ import (
 	"log"
 	"os"
 	"processing/internal/decimal"
-	transfer "processing/internal/service"
 	"testing"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -49,12 +48,11 @@ func TestMain(m *testing.M) {
 
 func TestStorage(t *testing.T) {
 	ctx := context.Background()
-	tx, err := testdb.BeginTx(ctx, nil)
+
+	postgres, err := NewStorage(ctx, testdb)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	postgres := NewStorage(testdb, tx)
 	// будет нашим sender_id
 	balance, err := decimal.NewFromString("1100.11")
 	if err != nil {
@@ -104,7 +102,7 @@ func TestStorage(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := postgres.UpdateStatus(ctx, tr, transfer.StatusCompleted); err != nil {
+	if err := postgres.UpdateStatus(ctx, tr, StatusCompleted); err != nil {
 		t.Fatal(err)
 	}
 	t.Log("создали транзакцию!")
