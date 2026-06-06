@@ -1,13 +1,21 @@
 -- +goose Up
-CREATE TABLE if not EXISTS Transact (
-	transaction_id BIGSERIAL PRIMARY KEY, 
-  	amount NUMERIC(15, 2) NOT NULL,
-  	sender_id INT NOT NULL,
-  	receiver_id INT NOT NULL,
+CREATE TABLE IF NOT EXISTS accounts ( 
+	id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+	name TEXT NOT NULL,
+	balance NUMERIC(36, 18) NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS transactions (
+	id UUID PRIMARY KEY DEFAULT gen_random_uuid(), 
+  	amount NUMERIC(36, 18) NOT NULL,
+  	sender_id UUID NOT NULL REFERENCES accounts(id),
+  	receiver_id UUID NOT NULL REFERENCES accounts(id),
   	status VARCHAR(20) NOT NULL DEFAULT 'pending',
   	created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   	updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+
 -- +goose Down
-DROP TABLE Transact;
+DROP TABLE IF EXISTS transactions;
+DROP TABLE IF EXISTS accounts;
