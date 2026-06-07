@@ -69,6 +69,7 @@ func NewAccount(name string, balance decimal.Decimal) (*Account, error) {
 	return &Account{ID: id, Name: name, Balance: balance}, nil
 }
 
+// паттерн Unit Of Work
 type UnitOfWork interface {
 	Accounts() AccountsStorage
 	Transactions() TransactionStorage

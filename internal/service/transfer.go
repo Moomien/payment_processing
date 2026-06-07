@@ -1,4 +1,4 @@
-package transfer
+package service
 
 import (
 	"context"
@@ -22,8 +22,8 @@ type TransferService struct {
 	cache   cache.Cache
 }
 
-func NewService(factory storage.UoWFactory) *TransferService {
-	return &TransferService{factory: factory}
+func NewService(factory storage.UoWFactory, cache cache.Cache) *TransferService {
+	return &TransferService{factory: factory, cache: cache}
 }
 
 // Transfer - главная функция процессинга. Создает транзакцию.
