@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"processing/internal/cache"
 	"processing/internal/decimal"
 	"processing/internal/storage"
 
@@ -18,18 +19,25 @@ var (
 
 type TransferService struct {
 	factory storage.UoWFactory
+	cache   cache.Cache
 }
 
 func NewService(factory storage.UoWFactory) *TransferService {
 	return &TransferService{factory: factory}
 }
 
+// Transfer - главная функция процессинга. Создает транзакцию.
+// Как работает: вычет с балансов аккаунтов -> создание транзакции
+// принимает контекст, ключ для redis, sender_id, receiver_id, amount
 func (ts *TransferService) Transfer(
-	ctx context.Context, sender_id,
-	receiver_id uuid.UUID,
+	ctx context.Context,
+	sender_id, receiver_id uuid.UUID,
 	amount decimal.Decimal,
 ) error {
-	//TODO: бизнес-логика процессинга. логика вычета с балансов аккаунтов -> создание транзакции
+	if err := ts.cache.CheckRateLimit(ctx, sender_id); err != nil {
+		return fmt.Errorf("ratelimit %s: %w", sender_id, err)
+	}
+
 	uow, err := ts.factory.NewUoW(ctx)
 	if err != nil {
 		return err
@@ -63,6 +71,11 @@ func (ts *TransferService) Transfer(
 	if err != nil {
 		return err
 	}
+	//проверка идемпотентности запроса
+	if err := ts.cache.IdempotencyCheck(ctx, sender_id, tx.ID); err != nil {
+		return err
+	}
+
 	if err := uow.Transactions().Transaction(ctx, tx); err != nil {
 		return err
 	}
@@ -75,8 +88,7 @@ func (ts *TransferService) Transfer(
 }
 
 // validateTransferRequest - валидирует реквест, проверяет достаточно ли денег на балансе сендера
-// не является ли получатель отправителем
-// положительная ли сумма
+// не является ли получатель отправителем, положительная ли сумма
 func validateTransferRequest(
 	sender *storage.Account,
 	receiver *storage.Account,

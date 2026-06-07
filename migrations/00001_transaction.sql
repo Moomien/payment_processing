@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS accounts (
 );
 
 CREATE TABLE IF NOT EXISTS transactions (
-	id UUID PRIMARY KEY DEFAULT gen_random_uuid(), 
+	id UUID PRIMARY KEY, 
   	amount NUMERIC(36, 18) NOT NULL,
   	sender_id UUID NOT NULL REFERENCES accounts(id),
   	receiver_id UUID NOT NULL REFERENCES accounts(id),
