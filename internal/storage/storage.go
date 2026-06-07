@@ -22,12 +22,14 @@ const (
 
 type TransactionStorage interface {
 	Transaction(ctx context.Context, tx *Transaction) error
-	UpdateStatus(ctx context.Context, id uuid.UUID, status TransactionStatus) error
+	UpdateStatus(ctx context.Context, tx *Transaction, status TransactionStatus) error
 }
 
 type AccountsStorage interface {
 	Create(ctx context.Context, ac *Account) error
 	GetById(ctx context.Context, id uuid.UUID) (*Account, error)
+	Sub(ctx context.Context, sender_id uuid.UUID, amount decimal.Decimal) error
+	Add(ctx context.Context, receiver_id uuid.UUID, amount decimal.Decimal) error
 }
 
 type Transaction struct {
@@ -67,22 +69,49 @@ func NewAccount(name string, balance decimal.Decimal) (*Account, error) {
 	return &Account{ID: id, Name: name, Balance: balance}, nil
 }
 
-type storage struct {
-	db *sql.DB
-	tx *sql.Tx
+type UnitOfWork interface {
+	Accounts() AccountsStorage
+	Transactions() TransactionStorage
+	Commit() error
+	Rollback() error
 }
 
-func NewStorage(ctx context.Context, db *sql.DB) (*storage, error) {
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, fmt.Errorf("создание бд: %w", err)
-	}
+type UoWFactory interface {
+	NewUoW(ctx context.Context) (UnitOfWork, error)
+}
 
-	return &storage{db: db, tx: tx}, nil
+type accountRepo struct{ tx *sql.Tx }
+type txRepo struct{ tx *sql.Tx }
+
+type sqlUoW struct {
+	tx       *sql.Tx
+	accounts *accountRepo
+	txs      *txRepo
+}
+
+func (u *sqlUoW) Accounts() AccountsStorage        { return u.accounts }
+func (u *sqlUoW) Transactions() TransactionStorage { return u.txs }
+func (u *sqlUoW) Commit() error                    { return u.tx.Commit() }
+func (u *sqlUoW) Rollback() error                  { return u.tx.Rollback() }
+
+type uowFactory struct{ db *sql.DB }
+
+func NewUoWFactory(db *sql.DB) UoWFactory { return &uowFactory{db: db} }
+
+func (u *uowFactory) NewUoW(ctx context.Context) (UnitOfWork, error) {
+	tx, err := u.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("tx begin: %w", err)
+	}
+	return &sqlUoW{
+		tx:       tx,
+		accounts: &accountRepo{tx: tx},
+		txs:      &txRepo{tx: tx},
+	}, nil
 }
 
 // Create - создаёт аккаунт и возвращает ID
-func (s *storage) Create(ctx context.Context, ac *Account) error {
+func (s *accountRepo) Create(ctx context.Context, ac *Account) error {
 	query := `INSERT INTO accounts(id, name, balance) VALUES($1, $2, $3)`
 	if _, err := s.tx.ExecContext(ctx, query, ac.ID, ac.Name, ac.Balance); err != nil {
 		return fmt.Errorf("создание аккакунта: %w", err)
@@ -91,9 +120,9 @@ func (s *storage) Create(ctx context.Context, ac *Account) error {
 }
 
 // GetById - возвращает аккаунт по id
-func (s *storage) GetById(ctx context.Context, id uuid.UUID) (*Account, error) {
+func (s *accountRepo) GetById(ctx context.Context, id uuid.UUID) (*Account, error) {
 	ac := &Account{}
-	query := `SELECT * FROM accounts WHERE id = $1`
+	query := `SELECT id, name, balance FROM accounts WHERE id = $1`
 	err := s.tx.QueryRowContext(ctx, query, id).Scan(&ac.ID, &ac.Name, &ac.Balance)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -104,8 +133,25 @@ func (s *storage) GetById(ctx context.Context, id uuid.UUID) (*Account, error) {
 	return ac, nil
 }
 
+// Sub - вычетает сумму с баланса аккаунта
+func (s *accountRepo) Sub(ctx context.Context, sender_id uuid.UUID, amount decimal.Decimal) error {
+	query := `UPDATE accounts SET balance = balance - $1 WHERE id = $2`
+	if _, err := s.tx.ExecContext(ctx, query, amount, sender_id); err != nil {
+		return fmt.Errorf("вычет суммы с баланса: %w", err)
+	}
+	return nil
+}
+
+func (s *accountRepo) Add(ctx context.Context, receiver_id uuid.UUID, amount decimal.Decimal) error {
+	query := `UPDATE accounts SET balance = balance + $1 WHERE id = $2`
+	if _, err := s.tx.ExecContext(ctx, query, amount, receiver_id); err != nil {
+		return fmt.Errorf("добавление суммы на баланс: %w", err)
+	}
+	return nil
+}
+
 // Transaction создает транзакцию в бд
-func (s *storage) Transaction(ctx context.Context, tx *Transaction) error {
+func (s *txRepo) Transaction(ctx context.Context, tx *Transaction) error {
 	query := `
 	INSERT INTO transactions(id, amount, sender_id, receiver_id) VALUES($1, $2, $3, $4)
 	RETURNING status, created_at, updated_at
@@ -117,8 +163,8 @@ func (s *storage) Transaction(ctx context.Context, tx *Transaction) error {
 	return nil
 }
 
-// UpdateStatus обновляет статус транзакции в бд
-func (s *storage) UpdateStatus(ctx context.Context, tx *Transaction, status TransactionStatus) error {
+// UpdateStatus обновляет статус транзакции в бд и отдает status, created_at, updated_at
+func (s *txRepo) UpdateStatus(ctx context.Context, tx *Transaction, status TransactionStatus) error {
 	query := `UPDATE transactions SET status = $1 WHERE id = $2
 	RETURNING status, created_at, updated_at
 	`

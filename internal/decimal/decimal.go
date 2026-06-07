@@ -131,6 +131,15 @@ func RescalePair(d1 Decimal, d2 Decimal) (Decimal, Decimal) {
 	return d1, d2
 }
 
+// Compare compares the numbers represented by d and d2 and returns:
+//
+//	-1 if d <  d2
+//	 0 if d == d2
+//	+1 if d >  d2
+func (d Decimal) Compare(d2 Decimal) int {
+	return d.Cmp(d2)
+}
+
 func (d Decimal) Cmp(d2 Decimal) int {
 	if d.exp == d2.exp {
 		return d.getValue().Cmp(d2.getValue())
@@ -242,4 +251,22 @@ func (d Decimal) rescale(exp int32) Decimal {
 		value: value,
 		exp:   exp,
 	}
+}
+
+// Sign returns:
+//
+//	-1 if d <  0
+//	 0 if d == 0
+//	+1 if d >  0
+func (d Decimal) Sign() int {
+	return d.getValue().Sign()
+}
+
+// IsPositive return
+//
+//	true if d > 0
+//	false if d == 0
+//	false if d < 0
+func (d Decimal) IsPositive() bool {
+	return d.Sign() == 1
 }
