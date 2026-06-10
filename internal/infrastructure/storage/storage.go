@@ -77,7 +77,6 @@ func (u *uowFactory) NewTX(ctx context.Context) (domain.UnitOfWork, error) {
 	}, nil
 }
 
-// Реализация domain.AccountsStorage
 // Create - создаёт аккаунт и возвращает ID
 func (s *accountRepo) Create(ctx context.Context, ac *domain.Account) error {
 	query := `INSERT INTO accounts(id, name, balance) VALUES($1, $2, $3)`
@@ -132,7 +131,6 @@ func (s *accountRepo) Add(ctx context.Context, receiver_id uuid.UUID, amount dec
 	return nil
 }
 
-// Реализация domain.TransactionStorage
 // Transaction создает транзакцию в бд
 func (s *txRepo) Transaction(ctx context.Context, tx *domain.Transaction) error {
 	s.log.DebugContext(ctx, "создание транзакции", "transaction_id", tx.ID, "amount", tx.Amount, "sender_id", tx.Sender_id, "receiver_id", tx.Receiver_id)
@@ -187,4 +185,49 @@ func (s *txRepo) GetByID(ctx context.Context, transactionID uuid.UUID) (domain.T
 	}
 	s.log.DebugContext(ctx, "транзакция успешно получена", "transaction_id", transactionID, "status", transaction.Status)
 	return transaction, nil
+}
+
+// GetTransactions получает транзакции по фильтрам
+func (s *txRepo) GetTransactions(ctx context.Context, filter domain.TransactionFilter) ([]domain.Transaction, error) {
+	s.log.DebugContext(ctx, "получение транзакций по фильтрам", "filter", filter)
+
+	query, args := sqlrequest(ctx, filter, s.log)
+	if query == "" {
+		s.log.Error("не получилось построить запрос")
+		return nil, errors.New("не получилось построить запрос")
+	}
+	s.log.DebugContext(ctx, "выполнение SQL запроса", "query", query, "args", args)
+
+	rows, err := s.tx.QueryContext(ctx, query, args...)
+	if err != nil {
+		s.log.ErrorContext(ctx, "ошибка выполнения запроса", "error", err)
+		return nil, fmt.Errorf("получение транзакций по фильтрам: %w", err)
+	}
+	defer rows.Close()
+
+	transactions := []domain.Transaction{}
+	for rows.Next() {
+		var t domain.Transaction
+		err := rows.Scan(
+			&t.ID,
+			&t.Amount,
+			&t.Sender_id,
+			&t.Receiver_id,
+			&t.Status,
+			&t.Created_at,
+		)
+		if err != nil {
+			s.log.ErrorContext(ctx, "ошибка сканирования строки", "error", err)
+			return nil, fmt.Errorf("сканирование транзакции: %w", err)
+		}
+		transactions = append(transactions, t)
+	}
+
+	if err = rows.Err(); err != nil {
+		s.log.ErrorContext(ctx, "ошибка при обработке строк", "error", err)
+		return nil, fmt.Errorf("обработка строк результата: %w", err)
+	}
+
+	s.log.InfoContext(ctx, "транзакции успешно получены", "count", len(transactions))
+	return transactions, nil
 }

@@ -23,6 +23,7 @@ type TransactionStorage interface {
 	Transaction(ctx context.Context, tx *Transaction) error
 	UpdateStatus(ctx context.Context, tx *Transaction, status TransactionStatus) error
 	GetByID(ctx context.Context, transactionID uuid.UUID) (Transaction, error)
+	GetTransactions(ctx context.Context, filter TransactionFilter) ([]Transaction, error)
 }
 
 type AccountsStorage interface {
@@ -81,4 +82,15 @@ func NewAccount(name string, balance decimal.Decimal) (*Account, error) {
 		return nil, fmt.Errorf("создание uuid: %w", err)
 	}
 	return &Account{ID: id, Name: name, Balance: balance}, nil
+}
+
+type TransactionFilter struct {
+	SenderID   uuid.UUID
+	ReceiverID uuid.UUID
+	MinAmount  string
+	MaxAmount  string
+	From       time.Time
+	To         time.Time
+	Limit      int
+	Offset     int
 }

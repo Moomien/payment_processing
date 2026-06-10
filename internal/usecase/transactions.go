@@ -107,7 +107,12 @@ func (ts *TransferService) Transfer(
 	return uow.Commit()
 }
 
-func (ts *TransferService) GetTransaction(ctx context.Context, transactionID, userID uuid.UUID, key string) (domain.Transaction, error) {
+func (ts *TransferService) GetTransaction(
+	ctx context.Context,
+	transactionID,
+	userID uuid.UUID,
+	key string,
+) (domain.Transaction, error) {
 	if err := ts.cache.CheckRateLimit(ctx, userID); err != nil {
 		ts.log.Error("CheckRateLimit", "err", err)
 		return domain.Transaction{}, err
@@ -132,4 +137,41 @@ func (ts *TransferService) GetTransaction(ctx context.Context, transactionID, us
 
 	uow.Commit()
 	return transaction, nil
+}
+
+func (ts *TransferService) GetTransactionFilter(
+	ctx context.Context,
+	t *domain.TransactionFilter,
+	userID uuid.UUID,
+	key string,
+) ([]domain.Transaction, error) {
+	if err := ts.cache.CheckRateLimit(ctx, userID); err != nil {
+		ts.log.Error("CheckRateLimit", "err", err)
+		return nil, err
+	}
+
+	if err := ts.cache.IdempotencyCheck(ctx, key, 10, time.Minute); err != nil {
+		ts.log.Error("IdempotencyCheck", "err", err)
+		return nil, err
+	}
+
+	uow, err := ts.tx.NewTX(ctx)
+	if err != nil {
+		ts.log.Error("NewTX", "err", err)
+		return nil, fmt.Errorf("ошибка начала транзакции бд: %w", err)
+	}
+	defer uow.Rollback()
+
+	transactions, err := uow.Transactions().GetTransactions(ctx, *t)
+	if err != nil {
+		ts.log.Error("Transactions.GetTransactions", "err", err)
+		return nil, fmt.Errorf("ошибка получения транзакций из бд: %w", err)
+	}
+
+	if err := uow.Commit(); err != nil {
+		ts.log.Error("Commit", "err", err)
+		return nil, fmt.Errorf("ошибка коммита транзакции: %w", err)
+	}
+
+	return transactions, nil
 }

@@ -67,8 +67,8 @@ func run() error {
 	handler := handlers.NewHandler(transferService)
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/transactions", handler.Transfer)
-	mux.HandleFunc("/transactions/{id}", handler.GetTransaction)
+	mux.HandleFunc("POST /transactions", handler.Transfer)
+	mux.HandleFunc("GET /transactions/{id}", handler.GetTransaction)
 	slog.Info("сервер запущен на :8080")
 	http.ListenAndServe(":8080", mux)
 
