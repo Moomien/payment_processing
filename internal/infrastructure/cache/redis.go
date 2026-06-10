@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -15,33 +16,32 @@ var (
 	ErrDupRequest      = errors.New("запрос дубликат")
 )
 
-// Cache - рейтлимитит запросы пользователя
-// и кэширует запросы пользователей для последующей дедупликации
-type Cache interface {
-	CheckRateLimit(ctx context.Context, userID uuid.UUID) error
-	IdempotencyCheck(ctx context.Context, sender_id uuid.UUID, transaction_id uuid.UUID) error
-}
-
 type Redis struct {
 	client *redis.Client
+	log    *slog.Logger
 }
 
-func NewRedis(addr string) *Redis {
+func NewRedis(addr string, log *slog.Logger) *Redis {
 	c := redis.NewClient(&redis.Options{
 		Addr: addr,
 	})
-	return &Redis{client: c}
+	return &Redis{client: c, log: log}
 }
 
 // IdempotencyCheck - функция счётчик, проверяет не был ли уже такой запрос от пользователя
-func (redis *Redis) IdempotencyCheck(ctx context.Context, sender_id uuid.UUID, transaction_id uuid.UUID) error {
-	key := fmt.Sprintf("idempotency:key:%s:%s", sender_id, transaction_id)
+func (redis *Redis) IdempotencyCheck(ctx context.Context, key string, limit int64, TTL time.Duration) error {
 	count, err := redis.client.Incr(ctx, key).Result()
 	if err != nil {
-		return fmt.Errorf("увеличение счетчика окна: %w", err)
+		redis.log.InfoContext(ctx, "увеличение счетчика окна", "err", err)
+		return err
 	}
 
-	if count > 1 {
+	if count == 1 {
+		redis.client.Expire(ctx, key, TTL)
+	}
+
+	if count > limit {
+		redis.log.InfoContext(ctx, "получен запрос дубликат", "err", err)
 		return ErrDupRequest
 	}
 
@@ -51,14 +51,17 @@ func (redis *Redis) IdempotencyCheck(ctx context.Context, sender_id uuid.UUID, t
 // CheckRateLimit ограничивает запросы от пользователя
 func (redis *Redis) CheckRateLimit(ctx context.Context, userID uuid.UUID) error {
 	if err := redis.checkWindow(ctx, userID, 5, time.Minute, "min"); err != nil {
+		redis.log.InfoContext(ctx, "увеличение счетчика окна", "err", err)
 		return err
 	}
 
 	if err := redis.checkWindow(ctx, userID, 60, time.Hour, "hour"); err != nil {
+		redis.log.InfoContext(ctx, "увеличение счетчика окна", "err", err)
 		return err
 	}
 
 	if err := redis.checkWindow(ctx, userID, 200, 24*time.Hour, "day"); err != nil {
+		redis.log.InfoContext(ctx, "увеличение счетчика окна", "err", err)
 		return err
 	}
 
@@ -70,7 +73,7 @@ func (redis *Redis) checkWindow(ctx context.Context, userID uuid.UUID, limit int
 
 	count, err := redis.client.Incr(ctx, key).Result()
 	if err != nil {
-		return fmt.Errorf("увеличение счетчика окна: %w", err)
+		return err
 	}
 
 	if count == 1 {

@@ -1,7 +1,0 @@
-{"time":"2026-06-07T21:16:19.617127498+03:00","level":"INFO","msg":"создан логгер"}
-{"time":"2026-06-07T21:16:19.61835187+03:00","level":"ERROR","msg":"не получилось подключиться к бд","err":"sql: unknown driver \"pgx\" (forgotten import?)"}
-{"time":"2026-06-07T21:17:21.825106894+03:00","level":"INFO","msg":"создан логгер"}
-{"time":"2026-06-07T21:17:21.82625075+03:00","level":"ERROR","msg":"не получилось подключиться к бд","err":"sql: unknown driver \"pgx\" (forgotten import?)"}
-{"time":"2026-06-07T21:17:42.074340356+03:00","level":"INFO","msg":"создан логгер"}
-{"time":"2026-06-07T21:18:14.071903418+03:00","level":"INFO","msg":"создан логгер"}
-{"time":"2026-06-07T21:18:14.097754442+03:00","level":"ERROR","msg":"не получилось пингануть бд","err":"failed to connect to `user=admin database=postgres_bd`:\n\t127.0.0.1:5432 (localhost): dial error: dial tcp 127.0.0.1:5432: connect: connection refused\n\t127.0.0.1:5432 (localhost): dial error: dial tcp 127.0.0.1:5432: connect: connection refused"}

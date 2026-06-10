@@ -11,8 +11,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   	sender_id UUID NOT NULL REFERENCES accounts(id),
   	receiver_id UUID NOT NULL REFERENCES accounts(id),
   	status VARCHAR(20) NOT NULL DEFAULT 'pending',
-  	created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  	updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  	created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 

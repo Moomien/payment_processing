@@ -2,6 +2,9 @@ package cache
 
 import (
 	"context"
+	"io"
+	"log/slog"
+	"os"
 	"testing"
 	"time"
 
@@ -10,24 +13,36 @@ import (
 )
 
 func TestIdempotencyCheck(t *testing.T) {
+	file, err := os.OpenFile("redis_test.log", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	logger := slog.New(slog.NewJSONHandler(io.MultiWriter(os.Stdout, file), nil))
 	mr := miniredis.RunT(t)
 
-	client := NewRedis(mr.Addr())
-	sender_id, _ := uuid.NewUUID()
-	transaction_id, _ := uuid.NewUUID()
-	if err := client.IdempotencyCheck(context.Background(), sender_id, transaction_id); err != nil {
+	client := NewRedis(mr.Addr(), logger)
+	key := "somekey"
+	if err := client.IdempotencyCheck(context.Background(), key, 1, 24*time.Hour); err != nil {
 		t.Log(err)
+		return
 	}
 	t.Log("запрос уникальный")
-	if err := client.IdempotencyCheck(context.Background(), sender_id, transaction_id); err != nil {
+	if err := client.IdempotencyCheck(context.Background(), key, 1, 24*time.Hour); err != nil {
 		t.Log(err)
 	}
 }
 
 func TestRedisMinutes(t *testing.T) {
+	file, err := os.OpenFile("redis_test.log", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	logger := slog.New(slog.NewJSONHandler(io.MultiWriter(os.Stdout, file), nil))
 	mr := miniredis.RunT(t)
 
-	client := NewRedis(mr.Addr())
+	client := NewRedis(mr.Addr(), logger)
 	userID, _ := uuid.NewUUID()
 	for range 5 {
 		if err := client.CheckRateLimit(context.Background(), userID); err != nil {
@@ -43,13 +58,20 @@ func TestRedisMinutes(t *testing.T) {
 	t.Log("промотали время вперед")
 	if err := client.CheckRateLimit(context.Background(), userID); err != nil {
 		t.Log(err)
+		return
 	}
 	t.Log("успех")
 }
 
 func TestRedisHours(t *testing.T) {
+	file, err := os.OpenFile("redis_test.log", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	logger := slog.New(slog.NewJSONHandler(io.MultiWriter(os.Stdout, file), nil))
 	mr := miniredis.RunT(t)
-	client := NewRedis(mr.Addr())
+	client := NewRedis(mr.Addr(), logger)
 	userID, _ := uuid.NewUUID()
 
 	for range 60 {
@@ -69,13 +91,20 @@ func TestRedisHours(t *testing.T) {
 	t.Log("промотали время на 1 час вперед")
 	if err := client.CheckRateLimit(context.Background(), userID); err != nil {
 		t.Log(err)
+		return
 	}
 	t.Log("успех")
 }
 
 func TestRedisDay(t *testing.T) {
+	file, err := os.OpenFile("redis_test.log", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	logger := slog.New(slog.NewJSONHandler(io.MultiWriter(os.Stdout, file), nil))
 	mr := miniredis.RunT(t)
-	client := NewRedis(mr.Addr())
+	client := NewRedis(mr.Addr(), logger)
 	userID, _ := uuid.NewUUID()
 
 	for range 200 {
@@ -101,6 +130,7 @@ func TestRedisDay(t *testing.T) {
 	t.Log("промотали время на 24 часа вперед")
 	if err := client.CheckRateLimit(context.Background(), userID); err != nil {
 		t.Log(err)
+		return
 	}
 	t.Log("успех")
 }
