@@ -2,10 +2,7 @@ package domain
 
 import (
 	"context"
-	"fmt"
 	"processing/internal/decimal"
-
-	"time"
 
 	"github.com/google/uuid"
 )
@@ -44,53 +41,4 @@ type UnitOfWork interface {
 // TxUOW нужен для создания транзакции (фабрика)
 type TxUOW interface {
 	NewTX(ctx context.Context) (UnitOfWork, error)
-}
-
-// Доменные сущности
-type Transaction struct {
-	ID          uuid.UUID         `json:"-"`
-	Amount      decimal.Decimal   `json:"amount"`
-	Sender_id   uuid.UUID         `json:"sender_id"`
-	Receiver_id uuid.UUID         `json:"receiver_id"`
-	Status      TransactionStatus `json:"status"`
-	Created_at  time.Time         `json:"created_at"`
-}
-
-type Account struct {
-	ID      uuid.UUID       `json:"account_id"`
-	Name    string          `json:"name"`
-	Balance decimal.Decimal `json:"balance"`
-}
-
-// Фабричные методы для создания доменных сущностей
-func NewTransaction(amount decimal.Decimal, sender_id uuid.UUID, receiver_id uuid.UUID) (*Transaction, error) {
-	id, err := uuid.NewUUID()
-	if err != nil {
-		return nil, fmt.Errorf("создание uuid: %w", err)
-	}
-	return &Transaction{
-		ID:          id,
-		Amount:      amount,
-		Sender_id:   sender_id,
-		Receiver_id: receiver_id,
-	}, nil
-}
-
-func NewAccount(name string, balance decimal.Decimal) (*Account, error) {
-	id, err := uuid.NewUUID()
-	if err != nil {
-		return nil, fmt.Errorf("создание uuid: %w", err)
-	}
-	return &Account{ID: id, Name: name, Balance: balance}, nil
-}
-
-type TransactionFilter struct {
-	SenderID   uuid.UUID
-	ReceiverID uuid.UUID
-	MinAmount  string
-	MaxAmount  string
-	From       time.Time
-	To         time.Time
-	Limit      int
-	Offset     int
 }
