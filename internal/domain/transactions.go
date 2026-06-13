@@ -1,12 +1,19 @@
 package domain
 
 import (
+	"context"
 	"fmt"
 	"processing/internal/decimal"
 	"time"
 
 	"github.com/google/uuid"
 )
+
+type TransactionUsecase interface {
+	Transfer(ctx context.Context, sender_id, receiver_id uuid.UUID, key string, amount decimal.Decimal) error
+	GetTransaction(ctx context.Context, transactionID, userID uuid.UUID, key string) (Transaction, error)
+	GetTransactionFilter(ctx context.Context, t *TransactionFilter, userID uuid.UUID, key string) ([]Transaction, error)
+}
 
 type Transaction struct {
 	ID          uuid.UUID         `json:"-"`

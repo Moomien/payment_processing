@@ -4,16 +4,16 @@ import (
 	"encoding/json"
 	"net/http"
 	"processing/internal/decimal"
-	"processing/internal/usecase"
+	"processing/internal/domain"
 
 	"github.com/google/uuid"
 )
 
 type handler struct {
-	service *usecase.TransferService
+	service domain.TransactionUsecase
 }
 
-func NewHandler(transferService *usecase.TransferService) *handler {
+func NewHandler(transferService domain.TransactionUsecase) *handler {
 	return &handler{service: transferService}
 }
 
@@ -51,7 +51,7 @@ func (h *handler) Transfer(w http.ResponseWriter, r *http.Request) {
 
 type transactionDTO struct {
 	UserID         uuid.UUID `json:"user_id"`
-	IdempotencyKEY string    `json:"Idempotency-Key"`
+	IdempotencyKEY string    `json:"idempotency-Key"`
 }
 
 // получение транзакции по id
