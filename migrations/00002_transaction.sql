@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS accounts (
 	id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 	name TEXT NOT NULL,
 	email TEXT NOT NULL UNIQUE,
-	balance NUMERIC(36, 18) NOT NULL
+	balance NUMERIC(36, 18)
 );
 
 CREATE TABLE IF NOT EXISTS transactions (

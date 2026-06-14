@@ -4,18 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"processing/internal/decimal"
-	"processing/internal/domain"
 
 	"github.com/google/uuid"
 )
-
-type handler struct {
-	service domain.TransactionUsecase
-}
-
-func NewHandler(transferService domain.TransactionUsecase) *handler {
-	return &handler{service: transferService}
-}
 
 type transferDTO struct {
 	Sender_id   uuid.UUID `json:"sender_id"`
@@ -43,15 +34,16 @@ func (h *handler) Transfer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.service.Transfer(ctx, dto.Sender_id, dto.Receiver_id, key, amount); err != nil {
+	if err := h.ts.Transfer(ctx, dto.Sender_id, dto.Receiver_id, key, amount); err != nil {
 		writeError(w, 500, err, 1)
 		return
 	}
+	//todo вернуть 200 код и отдать id транзакции
 }
 
 type transactionDTO struct {
 	UserID         uuid.UUID `json:"user_id"`
-	IdempotencyKEY string    `json:"idempotency-Key"`
+	IdempotencyKEY string    `json:"Idempotency-Key"`
 }
 
 // получение транзакции по id
@@ -72,7 +64,7 @@ func (h *handler) GetTransaction(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 
-	transaction, err := h.service.GetTransaction(ctx, id, dto.UserID, dto.IdempotencyKEY)
+	transaction, err := h.ts.GetTransaction(ctx, id, dto.UserID, dto.IdempotencyKEY)
 	if err != nil {
 		writeError(w, 500, err, 1)
 		return
@@ -106,7 +98,7 @@ func (h *handler) TransactionFilter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	transactions, err := h.service.GetTransactionFilter(ctx, filter, dto.UserID, dto.IdempotencyKEY)
+	transactions, err := h.ts.GetTransactionFilter(ctx, filter, dto.UserID, dto.IdempotencyKEY)
 	if err != nil {
 		writeError(w, 500, err, 1)
 		return

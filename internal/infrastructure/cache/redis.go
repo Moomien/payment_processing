@@ -55,7 +55,8 @@ func NewRedis(addr string, log *slog.Logger) *Redis {
 	return &Redis{client: c, log: log}
 }
 
-// IdempotencyCheck - функция счётчик, проверяет не был ли уже такой запрос от пользователя
+// IdempotencyCheck добавляет идемпотентности операции, проверяет не был ли уже такой запрос от ключа
+// Атомарно устанавливает флаг на TTL. Повторный вызов с тем же ключом вернет ErrDupRequest
 func (redis *Redis) IdempotencyCheck(ctx context.Context, key string, TTL time.Duration) error {
 	set, err := redis.client.SetNX(ctx, key, 1, TTL).Result()
 	if err != nil {

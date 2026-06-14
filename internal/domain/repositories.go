@@ -21,6 +21,7 @@ type TransactionStorage interface {
 	UpdateStatus(ctx context.Context, tx *Transaction, status TransactionStatus) error
 	GetByID(ctx context.Context, transactionID uuid.UUID) (Transaction, error)
 	GetTransactions(ctx context.Context, filter TransactionFilter) ([]Transaction, error)
+	TotalTransactions(ctx context.Context, userID uuid.UUID) (int, error)
 }
 
 type AccountsStorage interface {
@@ -37,8 +38,7 @@ type UnitOfWork interface {
 	Commit() error
 	Rollback() error
 }
-
-// TxUOW нужен для создания транзакции (фабрика)
 type TxUOW interface {
+	// TxUOW нужен для создания транзакции (фабрика)
 	NewTX(ctx context.Context) (UnitOfWork, error)
 }

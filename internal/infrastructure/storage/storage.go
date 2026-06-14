@@ -10,6 +10,11 @@ import (
 	"processing/internal/domain"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
+)
+
+var (
+	ErrAccountAlreadyExist = errors.New("Account already exists")
 )
 
 type accountRepo struct {
@@ -79,10 +84,14 @@ func (u *uowFactory) NewTX(ctx context.Context) (domain.UnitOfWork, error) {
 
 // Create - создаёт аккаунт и возвращает ID
 func (s *accountRepo) Create(ctx context.Context, ac *domain.Account) error {
-	query := `INSERT INTO accounts(id, name, balance) VALUES($1, $2, $3)`
-	s.log.DebugContext(ctx, "создание аккаунта", "account_id", ac.ID, "name", ac.Name, "balance", ac.Balance)
-	if _, err := s.tx.ExecContext(ctx, query, ac.ID, ac.Name, ac.Balance); err != nil {
-		s.log.ErrorContext(ctx, "ошибка создания аккаунта", "error", err, "account_id", ac.ID)
+	query := `INSERT INTO accounts(id, name, email, balance) VALUES($1, $2, $3, $4)`
+	s.log.DebugContext(ctx, "создание аккаунта", "account_id", ac.ID, "name", ac.Name, "email", ac.Email, "balance", ac.Balance)
+	if _, err := s.tx.ExecContext(ctx, query, ac.ID, ac.Name, ac.Email, ac.Balance); err != nil {
+		var pgerr *pgconn.PgError
+		if errors.As(err, &pgerr) && pgerr.Code == "23505" {
+			return ErrAccountAlreadyExist
+		}
+		s.log.ErrorContext(ctx, "ошибка создания аккаунта", "error", err, "account_id", ac.ID, "email", ac.Email)
 		return fmt.Errorf("создание аккакунта: %w", err)
 	}
 	s.log.InfoContext(ctx, "аккаунт успешно создан", "account_id", ac.ID)
@@ -93,8 +102,8 @@ func (s *accountRepo) Create(ctx context.Context, ac *domain.Account) error {
 func (s *accountRepo) GetById(ctx context.Context, id uuid.UUID) (*domain.Account, error) {
 	s.log.DebugContext(ctx, "получение аккаунта по id", "account_id", id)
 	ac := &domain.Account{}
-	query := `SELECT id, name, balance FROM accounts WHERE id = $1`
-	err := s.tx.QueryRowContext(ctx, query, id).Scan(&ac.ID, &ac.Name, &ac.Balance)
+	query := `SELECT id, name, email, balance FROM accounts WHERE id = $1`
+	err := s.tx.QueryRowContext(ctx, query, id).Scan(&ac.ID, &ac.Name, &ac.Email, &ac.Balance)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			s.log.WarnContext(ctx, "аккаунт не найден", "account_id", id)
@@ -230,4 +239,14 @@ func (s *txRepo) GetTransactions(ctx context.Context, filter domain.TransactionF
 
 	s.log.InfoContext(ctx, "транзакции успешно получены", "count", len(transactions))
 	return transactions, nil
+}
+
+func (s *txRepo) TotalTransactions(ctx context.Context, userID uuid.UUID) (int, error) {
+	query := `SELECT COUNT(*) FROM transactions WHERE receiver_id=$1 OR sender_id=$1`
+	var count int
+	if err := s.tx.QueryRowContext(ctx, query, userID).Scan(&count); err != nil {
+		return 0, err
+	}
+
+	return count, nil
 }

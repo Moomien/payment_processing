@@ -13,13 +13,13 @@ import (
 	"github.com/google/uuid"
 )
 
-type TransferService struct {
+type TransactionsService struct {
 	tx    domain.TxUOW
 	cache domain.Cache
 	log   *slog.Logger
 }
 
-func NewService(tx domain.TxUOW, cache domain.Cache, loggerPath string) *TransferService {
+func NewService(tx domain.TxUOW, cache domain.Cache, loggerPath string) *TransactionsService {
 	file, err := os.OpenFile(loggerPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		panic(err)
@@ -27,7 +27,7 @@ func NewService(tx domain.TxUOW, cache domain.Cache, loggerPath string) *Transfe
 	logger := slog.New(slog.NewJSONHandler(io.MultiWriter(os.Stdout, file), nil))
 	slog.SetDefault(logger)
 	slog.Info("создан логгер")
-	return &TransferService{
+	return &TransactionsService{
 		tx:    tx,
 		cache: cache,
 		log:   logger,
@@ -37,18 +37,18 @@ func NewService(tx domain.TxUOW, cache domain.Cache, loggerPath string) *Transfe
 // Transfer - главная функция процессинга. Создает транзакцию.
 // Как работает: вычет с балансов аккаунтов -> создание транзакции
 // принимает контекст, ключ для redis, sender_id, receiver_id, amount
-func (ts *TransferService) Transfer(
+func (ts *TransactionsService) Transfer(
 	ctx context.Context,
 	sender_id, receiver_id uuid.UUID,
 	key string,
 	amount decimal.Decimal,
 ) error {
-	if err := ts.cache.CheckRateLimit(ctx, sender_id); err != nil {
+	if err := ts.cache.CheckRateLimit(ctx, sender_id.String()); err != nil {
 		ts.log.Error("CheckRateLimit", "err", err)
 		return err
 	}
 	//проверка идемпотентности запроса
-	if err := ts.cache.IdempotencyCheck(ctx, key, 1, 24*time.Hour); err != nil {
+	if err := ts.cache.IdempotencyCheck(ctx, key, 24*time.Hour); err != nil {
 		ts.log.Error("IdempotencyCheck", "err", err)
 		return err
 	}
@@ -107,18 +107,18 @@ func (ts *TransferService) Transfer(
 	return uow.Commit()
 }
 
-func (ts *TransferService) GetTransaction(
+func (ts *TransactionsService) GetTransaction(
 	ctx context.Context,
 	transactionID,
 	userID uuid.UUID,
 	key string,
 ) (domain.Transaction, error) {
-	if err := ts.cache.CheckRateLimit(ctx, userID); err != nil {
+	if err := ts.cache.CheckRateLimit(ctx, userID.String()); err != nil {
 		ts.log.Error("CheckRateLimit", "err", err)
 		return domain.Transaction{}, err
 	}
 
-	if err := ts.cache.IdempotencyCheck(ctx, key, 10, time.Minute); err != nil {
+	if err := ts.cache.IdempotencyCheck(ctx, key, time.Minute); err != nil {
 		ts.log.Error("IdempotencyCheck", "err", err)
 		return domain.Transaction{}, err
 	}
@@ -139,18 +139,18 @@ func (ts *TransferService) GetTransaction(
 	return transaction, nil
 }
 
-func (ts *TransferService) GetTransactionFilter(
+func (ts *TransactionsService) GetTransactionFilter(
 	ctx context.Context,
 	t *domain.TransactionFilter,
 	userID uuid.UUID,
 	key string,
 ) ([]domain.Transaction, error) {
-	if err := ts.cache.CheckRateLimit(ctx, userID); err != nil {
+	if err := ts.cache.CheckRateLimit(ctx, userID.String()); err != nil {
 		ts.log.Error("CheckRateLimit", "err", err)
 		return nil, err
 	}
 
-	if err := ts.cache.IdempotencyCheck(ctx, key, 10, time.Minute); err != nil {
+	if err := ts.cache.IdempotencyCheck(ctx, key, time.Minute); err != nil {
 		ts.log.Error("IdempotencyCheck", "err", err)
 		return nil, err
 	}

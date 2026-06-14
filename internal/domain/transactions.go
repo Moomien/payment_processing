@@ -38,6 +38,7 @@ func NewTransaction(amount decimal.Decimal, sender_id uuid.UUID, receiver_id uui
 }
 
 type TransactionFilter struct {
+	AccoundID  uuid.UUID
 	SenderID   uuid.UUID
 	ReceiverID uuid.UUID
 	MinAmount  string

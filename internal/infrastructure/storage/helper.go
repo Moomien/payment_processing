@@ -16,6 +16,12 @@ func sqlrequest(ctx context.Context, filter domain.TransactionFilter, log *slog.
 	argCounter := 1
 
 	// Добавляем условия в зависимости от фильтров
+	if filter.AccoundID != uuid.Nil {
+		query += fmt.Sprintf(" AND(receiver_id = $%d OR sender_id = $%d)", argCounter, argCounter)
+		args = append(args, filter.AccoundID)
+		argCounter++
+	}
+
 	if filter.SenderID != uuid.Nil {
 		query += fmt.Sprintf(" AND sender_id = $%d", argCounter)
 		args = append(args, filter.SenderID)
