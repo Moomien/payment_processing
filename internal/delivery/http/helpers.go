@@ -1,7 +1,10 @@
 package handlers
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/url"
 	"processing/internal/domain"
 	"strconv"
@@ -74,4 +77,48 @@ func parseTime(query url.Values, key string) (time.Time, error) {
 	}
 
 	return t, nil
+}
+
+func status(id int) string {
+	m := map[int]string{
+		200: "OK",
+		400: "StatusBadRequest",
+		401: "Unauthorized",
+		403: "Forbidden",
+		404: "StatusNotFound",
+		429: "too many requests",
+		500: "internal server error",
+	}
+	value, _ := m[id]
+	return value
+}
+
+// writeError пишет ошибку клиенту.
+// flag:  1 - полная ошибка, любой другой - только часть
+func writeError(w http.ResponseWriter, code int, err error, flag int) {
+	if flag == 1 {
+		json.NewEncoder(w).Encode(map[string]string{"error": status(code)})
+		json.NewEncoder(w).Encode(map[string]string{"message": err.Error()})
+	}
+	json.NewEncoder(w).Encode(map[string]string{"error": status(code)})
+}
+
+func writeJSON(w http.ResponseWriter, code int, v any) error {
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(v); err != nil {
+		w.Header().Add("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		return err
+	}
+	w.Header().Add("Content-Type", "application/json")
+	w.WriteHeader(code)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+func readJSON(r *http.Request, v any) error {
+	r.Body = http.MaxBytesReader(nil, r.Body, 1<<20)
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	return dec.Decode(v)
 }

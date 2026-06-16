@@ -10,7 +10,7 @@ import (
 )
 
 type TransactionUsecase interface {
-	Transfer(ctx context.Context, sender_id, receiver_id uuid.UUID, key string, amount decimal.Decimal) error
+	Transfer(ctx context.Context, sender_id, receiver_id uuid.UUID, key string, amount decimal.Decimal) (string, error)
 	GetTransaction(ctx context.Context, transactionID, userID uuid.UUID, key string) (Transaction, error)
 	GetTransactionFilter(ctx context.Context, t *TransactionFilter, userID uuid.UUID, key string) ([]Transaction, error)
 }
@@ -38,7 +38,7 @@ func NewTransaction(amount decimal.Decimal, sender_id uuid.UUID, receiver_id uui
 }
 
 type TransactionFilter struct {
-	AccoundID  uuid.UUID
+	AccountID  uuid.UUID
 	SenderID   uuid.UUID
 	ReceiverID uuid.UUID
 	MinAmount  string
@@ -47,25 +47,4 @@ type TransactionFilter struct {
 	To         time.Time
 	Limit      int
 	Offset     int
-}
-
-// validateTransferRequest - валидирует реквест, проверяет достаточно ли денег на балансе сендера
-// не является ли получатель отправителем, положительная ли сумма
-func ValidateTransferRequest(
-	sender uuid.UUID,
-	receiver uuid.UUID,
-	sender_balance decimal.Decimal,
-	amount decimal.Decimal) error {
-	if sender == receiver {
-		return ErrSameAccount
-	}
-
-	if !amount.IsPositive() {
-		return ErrInvalidAmount
-	}
-
-	if sender_balance.Compare(amount) == -1 {
-		return ErrInsufficientFunds
-	}
-	return nil
 }

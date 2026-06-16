@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"encoding/json"
 	"net/http"
 	"processing/internal/decimal"
 
@@ -14,7 +13,7 @@ type transferDTO struct {
 	Amount      string    `json:"amount"`
 }
 
-// Transfer хэндлер для отправки транзакции платежа
+// Transfer хэндлер для оплаты
 // POST /transactions
 func (h *handler) Transfer(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
@@ -23,7 +22,7 @@ func (h *handler) Transfer(w http.ResponseWriter, r *http.Request) {
 
 	key := r.Header.Get("Idempotency-Key")
 	var dto transferDTO
-	if err := json.NewDecoder(r.Body).Decode(&dto); err != nil {
+	if err := readJSON(r, dto); err != nil {
 		writeError(w, 400, err, 0)
 		return
 	}
@@ -34,11 +33,15 @@ func (h *handler) Transfer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.ts.Transfer(ctx, dto.Sender_id, dto.Receiver_id, key, amount); err != nil {
+	transaction_id, err := h.ts.Transfer(ctx, dto.Sender_id, dto.Receiver_id, key, amount)
+	if err != nil {
 		writeError(w, 500, err, 1)
 		return
 	}
-	//todo вернуть 200 код и отдать id транзакции
+
+	if err := writeJSON(w, http.StatusOK, transaction_id); err != nil {
+		h.log.Error("[transfer] json encode", "err", err)
+	}
 }
 
 type transactionDTO struct {
@@ -50,15 +53,15 @@ type transactionDTO struct {
 // GET /transactions/:id
 func (h *handler) GetTransaction(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
-	w.Header().Set("Content-Type", "application/json")
 	id, err := uuid.Parse(r.PathValue("id"))
+	w.Header().Set("Content-Type", "application/json")
 	if err != nil {
-		writeError(w, 400, err, 0)
+		writeError(w, 400, err, 1)
 		return
 	}
 
 	var dto transactionDTO
-	if err := json.NewDecoder(r.Body).Decode(&dto); err != nil {
+	if err := readJSON(r, &dto); err != nil {
 		writeError(w, 500, err, 0)
 		return
 	}
@@ -70,9 +73,8 @@ func (h *handler) GetTransaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := json.NewEncoder(w).Encode(transaction); err != nil {
-		writeError(w, 500, err, 0)
-		return
+	if err := writeJSON(w, http.StatusOK, transaction); err != nil {
+		h.log.Error("[GetTransaction] json encode", "err", err)
 	}
 }
 
@@ -85,7 +87,7 @@ func (h *handler) TransactionFilter(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	var dto transactionDTO
-	if err := json.NewDecoder(r.Body).Decode(&dto); err != nil {
+	if err := readJSON(r, &dto); err != nil {
 		writeError(w, 400, err, 0)
 		return
 	}
@@ -104,8 +106,7 @@ func (h *handler) TransactionFilter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := json.NewEncoder(w).Encode(transactions); err != nil {
-		writeError(w, 500, err, 0)
-		return
+	if err := writeJSON(w, http.StatusOK, transactions); err != nil {
+		h.log.Error("[TransactionFilter] json encode", "err", err)
 	}
 }

@@ -119,11 +119,26 @@ func (s *accountRepo) GetById(ctx context.Context, id uuid.UUID) (*domain.Accoun
 // Sub - вычетает сумму с баланса аккаунта
 func (s *accountRepo) Sub(ctx context.Context, sender_id uuid.UUID, amount decimal.Decimal) error {
 	s.log.DebugContext(ctx, "вычет суммы с баланса", "account_id", sender_id, "amount", amount)
-	query := `UPDATE accounts SET balance = balance - $1 WHERE id = $2`
-	if _, err := s.tx.ExecContext(ctx, query, amount, sender_id); err != nil {
+	query := `
+	UPDATE accounts 
+	SET balance = balance - $1 
+	WHERE id = $2 AND balance >= $1
+	`
+	res, err := s.tx.ExecContext(ctx, query, amount, sender_id)
+	if err != nil {
 		s.log.ErrorContext(ctx, "ошибка вычета суммы с баланса", "error", err, "account_id", sender_id, "amount", amount)
 		return fmt.Errorf("вычет суммы с баланса: %w", err)
 	}
+
+	rows, err := res.RowsAffected()
+	if err != nil {
+		s.log.ErrorContext(ctx, "вычет суммы с баланса", "err", err)
+		return err
+	}
+	if rows == 0 {
+		return domain.ErrInsufficientFunds
+	}
+
 	s.log.InfoContext(ctx, "сумма успешно вычтена с баланса", "account_id", sender_id, "amount", amount)
 	return nil
 }
@@ -174,10 +189,11 @@ func (s *txRepo) UpdateStatus(ctx context.Context, tx *domain.Transaction, statu
 func (s *txRepo) GetByID(ctx context.Context, transactionID uuid.UUID) (domain.Transaction, error) {
 	s.log.DebugContext(ctx, "получение транзакции по id", "transaction_id", transactionID)
 	transaction := domain.Transaction{}
-	query := `SELECT amount, sender_id, receiver_id, status, created_at FROM transactions WHERE id = $1`
+	query := `SELECT id, amount, sender_id, receiver_id, status, created_at FROM transactions WHERE id = $1`
 	err := s.tx.
 		QueryRowContext(ctx, query, transactionID).
 		Scan(
+			&transaction.ID,
 			&transaction.Amount,
 			&transaction.Sender_id,
 			&transaction.Receiver_id,

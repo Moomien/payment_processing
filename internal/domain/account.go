@@ -25,6 +25,6 @@ func NewAccount(name string, balance decimal.Decimal) (*Account, error) {
 
 type AccountsUsecase interface {
 	Create(ctx context.Context, acc *Account, ip string) error
-	GetAccount(ctx context.Context, id uuid.UUID) (Account, error)
+	GetAccount(ctx context.Context, id uuid.UUID) (*Account, error)
 	TransactionHistory(ctx context.Context, accountID uuid.UUID, limit, offset int) (int, []Transaction, error)
 }

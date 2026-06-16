@@ -38,6 +38,7 @@ func NewAccountService(tx domain.TxUOW, cache domain.Cache, loggerPath string) *
 	}
 }
 
+// Create создает аккаунт
 func (as *AccountsService) Create(ctx context.Context, acc *domain.Account, ip string) error {
 	if err := as.cache.CheckRateLimit(ctx, ip); err != nil {
 		return err
@@ -72,6 +73,7 @@ func (as *AccountsService) Create(ctx context.Context, acc *domain.Account, ip s
 	return nil
 }
 
+// GetAccount получает аккаунт по id
 func (as *AccountsService) GetAccount(ctx context.Context, id uuid.UUID) (*domain.Account, error) {
 	if err := as.cache.CheckRateLimit(ctx, id.String()); err != nil {
 		return nil, err
@@ -94,6 +96,7 @@ func (as *AccountsService) GetAccount(ctx context.Context, id uuid.UUID) (*domai
 	return acc, nil
 }
 
+// TransactionHistory выводит все транзакции пользователя
 func (as *AccountsService) TransactionHistory(ctx context.Context, accountID uuid.UUID, limit, offset int) (int, []domain.Transaction, error) {
 	if err := as.cache.CheckRateLimit(ctx, accountID.String()); err != nil {
 		return 0, nil, err
@@ -108,7 +111,7 @@ func (as *AccountsService) TransactionHistory(ctx context.Context, accountID uui
 	var transactions []domain.Transaction
 	var total int
 	filter := domain.TransactionFilter{
-		AccoundID: accountID,
+		AccountID: accountID,
 		Limit:     limit,
 		Offset:    offset,
 	}
