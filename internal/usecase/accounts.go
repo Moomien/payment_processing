@@ -108,17 +108,18 @@ func (as *AccountsService) TransactionHistory(ctx context.Context, accountID uui
 	}
 	defer uow.Rollback()
 
-	var transactions []domain.Transaction
 	var total int
-	filter := domain.TransactionFilter{
-		AccountID: accountID,
-		Limit:     limit,
-		Offset:    offset,
-	}
 
 	total, err = uow.Transactions().TotalTransactions(ctx, accountID)
 	if err != nil {
 		return 0, nil, err
+	}
+
+	var transactions []domain.Transaction
+	filter := domain.TransactionFilter{
+		AccountID: accountID,
+		Limit:     limit,
+		Offset:    offset,
 	}
 
 	transactions, err = uow.Transactions().GetTransactions(ctx, filter)

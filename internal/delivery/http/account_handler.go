@@ -1,10 +1,10 @@
 package handlers
 
 import (
-	"encoding/json"
 	"net/http"
 	"processing/internal/decimal"
 	"processing/internal/domain"
+	"strconv"
 )
 
 type AccountDTO struct {
@@ -19,8 +19,8 @@ func (h *handler) CreateAccount(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	ctx := r.Context()
 	var dto AccountDTO
-	if err := json.NewDecoder(r.Body).Decode(&dto); err != nil {
-		writeError(w, 400, err, 1)
+	if err := readJSON(r, dto); err != nil {
+		writeError(w, 400, err, 0)
 		return
 	}
 
@@ -41,9 +41,9 @@ func (h *handler) CreateAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(acc)
+	if err := writeJSON(w, http.StatusOK, acc); err != nil {
+		h.log.Error("[CreateAccount] json encode", "err", err)
+	}
 }
 
 // выводит информацию об аккаунте по айди
@@ -63,15 +63,18 @@ func (h *handler) GetAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Add("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(account); err != nil {
-		writeError(w, 500, err, 1)
-		return
+	if err := writeJSON(w, http.StatusOK, account); err != nil {
+		h.log.Error("[GetAccount] json encode", "err", err)
 	}
 }
 
-//Get /accounts/:id/transactions?limit=..&offset=...
-func(h *handler) AccountTransactions(w http.ResponseWriter, r *http.Request) {
+type AccountTransactions struct {
+	Slice []domain.Transaction `json:"transactions"`
+	Total int                  `json:"pages"`
+}
+
+// Get /accounts/:id/transactions?limit=..&offset=...
+func (h *handler) AccountTransactions(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	ctx := r.Context()
 	id, err := parseUUID(r.URL.Query(), "id")
@@ -79,7 +82,34 @@ func(h *handler) AccountTransactions(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 500, err, 0)
 		return
 	}
-	limit := 
-	if err := h.as.TransactionHistory(ctx, id, )
 
+	limit := r.URL.Query().Get("limit")
+	offset := r.URL.Query().Get("offset")
+	l, err := strconv.Atoi(limit)
+	if err != nil {
+		h.log.Error("strconv ", "err", err)
+		return
+	}
+
+	o, err := strconv.Atoi(offset)
+	if err != nil {
+		h.log.Error("strconv ", "err", err)
+		writeError(w, 500, err, 0)
+		return
+	}
+
+	total, transactions, err := h.as.TransactionHistory(ctx, id, l, o)
+	if err != nil {
+		writeError(w, 500, err, 0)
+		return
+	}
+
+	dto := AccountTransactions{
+		Slice: transactions,
+		Total: total,
+	}
+
+	if err := writeJSON(w, http.StatusOK, dto); err != nil {
+		h.log.Error("[AccountTransactions] json encode", "err", err)
+	}
 }

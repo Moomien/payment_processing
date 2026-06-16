@@ -96,6 +96,9 @@ func status(id int) string {
 // writeError пишет ошибку клиенту.
 // flag:  1 - полная ошибка, любой другой - только часть
 func writeError(w http.ResponseWriter, code int, err error, flag int) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+
 	if flag == 1 {
 		json.NewEncoder(w).Encode(map[string]string{"error": status(code)})
 		json.NewEncoder(w).Encode(map[string]string{"message": err.Error()})
