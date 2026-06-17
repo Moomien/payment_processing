@@ -22,7 +22,7 @@ func (h *handler) Transfer(w http.ResponseWriter, r *http.Request) {
 
 	key := r.Header.Get("Idempotency-Key")
 	var dto transferDTO
-	if err := readJSON(r, dto); err != nil {
+	if err := readJSON(r, &dto); err != nil {
 		writeError(w, 400, err, 0)
 		return
 	}

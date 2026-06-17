@@ -71,9 +71,14 @@ func parseUUID(query url.Values, key string) (uuid.UUID, error) {
 }
 
 func parseTime(query url.Values, key string) (time.Time, error) {
-	t, err := time.Parse("2006-01-02", query.Get(key))
+	val := query.Get(key)
+	if val == "" {
+		return time.Time{}, nil
+	}
+
+	t, err := time.Parse("2006-01-02", val)
 	if err != nil {
-		return time.Time{}, err
+		return time.Time{}, fmt.Errorf("невалидная дата %s: %w", key, err)
 	}
 
 	return t, nil
@@ -100,8 +105,11 @@ func writeError(w http.ResponseWriter, code int, err error, flag int) {
 	w.WriteHeader(code)
 
 	if flag == 1 {
-		json.NewEncoder(w).Encode(map[string]string{"error": status(code)})
-		json.NewEncoder(w).Encode(map[string]string{"message": err.Error()})
+		json.NewEncoder(w).Encode(map[string]string{
+			"error":   status(code),
+			"message": err.Error(),
+		})
+		return
 	}
 	json.NewEncoder(w).Encode(map[string]string{"error": status(code)})
 }

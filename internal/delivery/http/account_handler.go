@@ -19,7 +19,7 @@ func (h *handler) CreateAccount(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	ctx := r.Context()
 	var dto AccountDTO
-	if err := readJSON(r, dto); err != nil {
+	if err := readJSON(r, &dto); err != nil {
 		writeError(w, 400, err, 0)
 		return
 	}

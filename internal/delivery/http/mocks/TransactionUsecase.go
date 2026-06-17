@@ -76,21 +76,31 @@ func (_m *TransactionUsecase) GetTransactionFilter(ctx context.Context, t *domai
 }
 
 // Transfer provides a mock function with given fields: ctx, sender_id, receiver_id, key, amount
-func (_m *TransactionUsecase) Transfer(ctx context.Context, sender_id uuid.UUID, receiver_id uuid.UUID, key string, amount decimal.Decimal) error {
+func (_m *TransactionUsecase) Transfer(ctx context.Context, sender_id uuid.UUID, receiver_id uuid.UUID, key string, amount decimal.Decimal) (string, error) {
 	ret := _m.Called(ctx, sender_id, receiver_id, key, amount)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Transfer")
 	}
 
-	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, uuid.UUID, string, decimal.Decimal) error); ok {
+	var r0 string
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, uuid.UUID, string, decimal.Decimal) (string, error)); ok {
+		return rf(ctx, sender_id, receiver_id, key, amount)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, uuid.UUID, string, decimal.Decimal) string); ok {
 		r0 = rf(ctx, sender_id, receiver_id, key, amount)
 	} else {
-		r0 = ret.Error(0)
+		r0 = ret.Get(0).(string)
 	}
 
-	return r0
+	if rf, ok := ret.Get(1).(func(context.Context, uuid.UUID, uuid.UUID, string, decimal.Decimal) error); ok {
+		r1 = rf(ctx, sender_id, receiver_id, key, amount)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
 }
 
 // NewTransactionUsecase creates a new instance of TransactionUsecase. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
