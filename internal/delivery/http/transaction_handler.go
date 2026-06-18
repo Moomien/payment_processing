@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"net/http"
 	"processing/internal/decimal"
 
@@ -22,7 +23,7 @@ func (h *handler) Transfer(w http.ResponseWriter, r *http.Request) {
 
 	key := r.Header.Get("Idempotency-Key")
 	var dto transferDTO
-	if err := readJSON(r, &dto); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&dto); err != nil {
 		writeError(w, 400, err, 0)
 		return
 	}
@@ -61,7 +62,7 @@ func (h *handler) GetTransaction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var dto transactionDTO
-	if err := readJSON(r, &dto); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&dto); err != nil {
 		writeError(w, 500, err, 0)
 		return
 	}
@@ -87,7 +88,7 @@ func (h *handler) TransactionFilter(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	var dto transactionDTO
-	if err := readJSON(r, &dto); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&dto); err != nil {
 		writeError(w, 400, err, 0)
 		return
 	}

@@ -7,7 +7,9 @@ import (
 	"net/http"
 	"net/url"
 	"processing/internal/domain"
+	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -127,9 +129,91 @@ func writeJSON(w http.ResponseWriter, code int, v any) error {
 	return err
 }
 
-func readJSON(r *http.Request, v any) error {
-	r.Body = http.MaxBytesReader(nil, r.Body, 1<<20)
-	dec := json.NewDecoder(r.Body)
-	dec.DisallowUnknownFields()
-	return dec.Decode(v)
+func setAuthCookie(w http.ResponseWriter, path, name, token string, maxage int) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     name,
+		Value:    token,
+		Path:     path,
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteStrictMode,
+		MaxAge:   maxage,
+	})
+}
+
+func validateLogin(w http.ResponseWriter, data *AuthDTO) bool {
+	email := strings.TrimSpace(data.Email)
+	password := strings.TrimSpace(data.Password)
+
+	if email == "" {
+		http.Error(w, "поле с почтой не может быть пустым", http.StatusUnprocessableEntity)
+		return false
+	}
+
+	if password == "" {
+		http.Error(w, "поле с паролем не может быть пустым", http.StatusUnprocessableEntity)
+		return false
+	}
+
+	regmail := `^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`
+	reg := regexp.MustCompile(regmail)
+	if !reg.MatchString(email) {
+		http.Error(
+			w,
+			"Пожалуйста, введите корректный адрес электронной почты (например, example@mail.com)",
+			http.StatusUnprocessableEntity,
+		)
+		return false
+	}
+
+	if len(password) < 8 {
+		http.Error(w, "длина пароля не может быть меньше 8 символов", http.StatusUnprocessableEntity)
+		return false
+	}
+
+	return true
+}
+
+func validateRegister(w http.ResponseWriter, data *AuthDTO) bool {
+	email := strings.TrimSpace(data.Email)
+	password := strings.TrimSpace(data.Password)
+	name := strings.TrimSpace(data.Name)
+
+	if name == "" {
+		http.Error(w, "поле с именем не может быть пустым", http.StatusUnprocessableEntity)
+		return false
+	}
+
+	if email == "" {
+		http.Error(w, "поле с почтой не может быть пустым", http.StatusUnprocessableEntity)
+		return false
+	}
+
+	if password == "" {
+		http.Error(w, "поле с паролем не может быть пустым", http.StatusUnprocessableEntity)
+		return false
+	}
+
+	if len(name) < 3 {
+		http.Error(w, "имя не может быть меньше 3 букв", http.StatusUnprocessableEntity)
+		return false
+	}
+
+	regmail := `^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`
+	reg := regexp.MustCompile(regmail)
+	if !reg.MatchString(email) {
+		http.Error(
+			w,
+			"Пожалуйста, введите корректный адрес электронной почты (например, example@mail.com)",
+			http.StatusUnprocessableEntity,
+		)
+		return false
+	}
+
+	if len(password) < 8 {
+		http.Error(w, "длина пароля не может быть меньше 8 символов", http.StatusUnprocessableEntity)
+		return false
+	}
+
+	return true
 }

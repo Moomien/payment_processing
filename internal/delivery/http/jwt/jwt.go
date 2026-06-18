@@ -4,19 +4,37 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"processing/internal/domain"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )
 
+type AccessClaims struct {
+	UserID string `json:"user_id"`
+	Role   string `json:"role"`
+	jwt.RegisteredClaims
+}
+
+type RefreshClaims struct {
+	UserID string `json:"user_id"`
+	jwt.RegisteredClaims
+}
+
+type TokenPair struct {
+	AccessToken  string    `json:"access_token"`
+	RefreshToken string    `json:"refresh_token"`
+	ExpiresIn    int64     `json:"expires_in"`
+	JTI          string    `json:"-"`
+	ExpiresAt    time.Time `json:"-"`
+}
+
 const (
 	AccessTokenDuration  = 15 * time.Minute
 	RefreshTokenDuration = 7 * 24 * time.Hour
 )
 
-func GenerateTokenPair(userID string, role string) (*domain.TokenPairInternal, error) {
+func GenerateTokenPair(userID string, role string) (*TokenPair, error) {
 	accessSecretKey := os.Getenv("accessSecretKey")
 	refreshSecretKey := os.Getenv("refreshSecretKey")
 
@@ -28,7 +46,7 @@ func GenerateTokenPair(userID string, role string) (*domain.TokenPairInternal, e
 	accessExpiresAt := now.Add(AccessTokenDuration)
 	refreshExpiresAt := now.Add(RefreshTokenDuration)
 
-	accessClaims := domain.AccessClaims{
+	accessClaims := AccessClaims{
 		UserID: userID,
 		Role:   role,
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -48,7 +66,7 @@ func GenerateTokenPair(userID string, role string) (*domain.TokenPairInternal, e
 		return nil, fmt.Errorf("ошибка генерации JTI: %w", err)
 	}
 
-	refreshClaims := domain.RefreshClaims{
+	refreshClaims := RefreshClaims{
 		UserID: userID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ID:        jti.String(),
@@ -63,7 +81,7 @@ func GenerateTokenPair(userID string, role string) (*domain.TokenPairInternal, e
 		return nil, fmt.Errorf("ошибка создания refresh token: %w", err)
 	}
 
-	return &domain.TokenPairInternal{
+	return &TokenPair{
 		AccessToken:  accessSigned,
 		RefreshToken: refreshSigned,
 		ExpiresIn:    int64(AccessTokenDuration.Seconds()),
@@ -72,16 +90,16 @@ func GenerateTokenPair(userID string, role string) (*domain.TokenPairInternal, e
 	}, nil
 }
 
-func ValidateAccessToken(tokenString string) (*domain.AccessClaims, error) {
+func ValidateAccessToken(tokenString string) (*AccessClaims, error) {
 	accessSecretKey := os.Getenv("accessSecretKey")
 
 	token, err := jwt.ParseWithClaims(
-		tokenString, &domain.AccessClaims{},
+		tokenString, &AccessClaims{},
 		func(t *jwt.Token) (interface{}, error) {
 			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, fmt.Errorf("неверный алгоритм: %v", t.Header["alg"])
 			}
-			return []byte(accessSecretKey), nil
+			return accessSecretKey, nil
 		},
 	)
 	if err != nil {
@@ -93,28 +111,25 @@ func ValidateAccessToken(tokenString string) (*domain.AccessClaims, error) {
 		return nil, fmt.Errorf("парсинг jwt токена: %w", err)
 	}
 
-	claims, ok := token.Claims.(*domain.AccessClaims)
+	claims, ok := token.Claims.(*AccessClaims)
 	if !ok {
 		return nil, errors.New("невалидные claims")
 	}
 
-	return &domain.AccessClaims{
-		UserID: claims.UserID,
-		Role:   claims.Role,
-	}, nil
+	return claims, nil
 }
 
-func ValidateRefreshToken(tokenString string) (*domain.RefreshClaims, error) {
+func ValidateRefreshToken(tokenString string) (*RefreshClaims, error) {
 	refreshSecretKey := os.Getenv("refreshSecretKey")
 
 	token, err := jwt.ParseWithClaims(
 		tokenString,
-		&domain.RefreshClaims{},
+		&RefreshClaims{},
 		func(t *jwt.Token) (interface{}, error) {
 			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, fmt.Errorf("невалидный алгоритм: %v", t.Header["alg"])
 			}
-			return []byte(refreshSecretKey), nil
+			return refreshSecretKey, nil
 		},
 	)
 	if err != nil {
@@ -126,13 +141,10 @@ func ValidateRefreshToken(tokenString string) (*domain.RefreshClaims, error) {
 		return nil, fmt.Errorf("парсинг jwt токена: %w", err)
 	}
 
-	claims, ok := token.Claims.(*domain.RefreshClaims)
+	claims, ok := token.Claims.(*RefreshClaims)
 	if !ok {
 		return nil, errors.New("невалидные claims")
 	}
 
-	return &domain.RefreshClaims{
-		UserID: claims.UserID,
-		JTI:    claims.ID,
-	}, nil
+	return claims, nil
 }
