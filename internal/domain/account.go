@@ -9,10 +9,12 @@ import (
 )
 
 type Account struct {
-	ID      uuid.UUID       `json:"account_id"`
-	Name    string          `json:"name"`
-	Email   string          `json:"email"`
-	Balance decimal.Decimal `json:"balance"`
+	ID           uuid.UUID       `json:"account_id"`
+	Name         string          `json:"name"`
+	Email        string          `json:"email"`
+	Balance      decimal.Decimal `json:"balance"`
+	PasswordHash string          `json:"-"`
+	Role         string          `json:"role"`
 }
 
 func NewAccount(name string, balance decimal.Decimal) (*Account, error) {
