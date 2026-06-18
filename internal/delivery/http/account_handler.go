@@ -19,13 +19,13 @@ func (h *handler) GetAccount(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	id, err := parseUUID(r.URL.Query(), "id")
 	if err != nil {
-		writeError(w, 500, err, 0)
+		writeError(w, http.StatusInternalServerError, err, 0)
 		return
 	}
 
 	account, err := h.as.GetAccount(ctx, id)
 	if err != nil {
-		writeError(w, 500, err, 1)
+		writeError(w, http.StatusInternalServerError, err, 1)
 		return
 	}
 
@@ -45,7 +45,7 @@ func (h *handler) AccountTransactions(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	id, err := parseUUID(r.URL.Query(), "id")
 	if err != nil {
-		writeError(w, 500, err, 0)
+		writeError(w, http.StatusInternalServerError, err, 0)
 		return
 	}
 
@@ -54,19 +54,20 @@ func (h *handler) AccountTransactions(w http.ResponseWriter, r *http.Request) {
 	l, err := strconv.Atoi(limit)
 	if err != nil {
 		h.log.Error("strconv ", "err", err)
+		writeError(w, http.StatusBadRequest, err, 0)
 		return
 	}
 
 	o, err := strconv.Atoi(offset)
 	if err != nil {
 		h.log.Error("strconv ", "err", err)
-		writeError(w, 500, err, 0)
+		writeError(w, http.StatusInternalServerError, err, 0)
 		return
 	}
 
 	total, transactions, err := h.as.TransactionHistory(ctx, id, l, o)
 	if err != nil {
-		writeError(w, 500, err, 0)
+		writeError(w, http.StatusInternalServerError, err, 0)
 		return
 	}
 

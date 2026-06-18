@@ -142,22 +142,21 @@ func setAuthCookie(w http.ResponseWriter, path, name, token string, maxage int) 
 }
 
 func validateLogin(w http.ResponseWriter, data *AuthDTO) bool {
-	email := strings.TrimSpace(data.Email)
-	password := strings.TrimSpace(data.Password)
+	data.Email = strings.TrimSpace(data.Email)
 
-	if email == "" {
+	if data.Email == "" {
 		http.Error(w, "поле с почтой не может быть пустым", http.StatusUnprocessableEntity)
 		return false
 	}
 
-	if password == "" {
+	if data.Password == "" {
 		http.Error(w, "поле с паролем не может быть пустым", http.StatusUnprocessableEntity)
 		return false
 	}
 
 	regmail := `^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`
 	reg := regexp.MustCompile(regmail)
-	if !reg.MatchString(email) {
+	if !reg.MatchString(data.Email) {
 		http.Error(
 			w,
 			"Пожалуйста, введите корректный адрес электронной почты (например, example@mail.com)",
@@ -166,7 +165,7 @@ func validateLogin(w http.ResponseWriter, data *AuthDTO) bool {
 		return false
 	}
 
-	if len(password) < 8 {
+	if len(data.Password) < 8 {
 		http.Error(w, "длина пароля не может быть меньше 8 символов", http.StatusUnprocessableEntity)
 		return false
 	}
@@ -175,33 +174,32 @@ func validateLogin(w http.ResponseWriter, data *AuthDTO) bool {
 }
 
 func validateRegister(w http.ResponseWriter, data *AuthDTO) bool {
-	email := strings.TrimSpace(data.Email)
-	password := strings.TrimSpace(data.Password)
-	name := strings.TrimSpace(data.Name)
+	data.Email = strings.TrimSpace(data.Email)
+	data.Name = strings.TrimSpace(data.Name)
 
-	if name == "" {
+	if data.Name == "" {
 		http.Error(w, "поле с именем не может быть пустым", http.StatusUnprocessableEntity)
 		return false
 	}
 
-	if email == "" {
+	if data.Email == "" {
 		http.Error(w, "поле с почтой не может быть пустым", http.StatusUnprocessableEntity)
 		return false
 	}
 
-	if password == "" {
+	if data.Password == "" {
 		http.Error(w, "поле с паролем не может быть пустым", http.StatusUnprocessableEntity)
 		return false
 	}
 
-	if len(name) < 3 {
+	if len(data.Name) < 3 {
 		http.Error(w, "имя не может быть меньше 3 букв", http.StatusUnprocessableEntity)
 		return false
 	}
 
 	regmail := `^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`
 	reg := regexp.MustCompile(regmail)
-	if !reg.MatchString(email) {
+	if !reg.MatchString(data.Email) {
 		http.Error(
 			w,
 			"Пожалуйста, введите корректный адрес электронной почты (например, example@mail.com)",
@@ -210,7 +208,7 @@ func validateRegister(w http.ResponseWriter, data *AuthDTO) bool {
 		return false
 	}
 
-	if len(password) < 8 {
+	if len(data.Password) < 8 {
 		http.Error(w, "длина пароля не может быть меньше 8 символов", http.StatusUnprocessableEntity)
 		return false
 	}

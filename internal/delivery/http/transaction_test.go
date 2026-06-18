@@ -22,7 +22,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestTransferHandler(t *testing.T) {
+func TestTransactionTransferHandler(t *testing.T) {
 	service, err := os.OpenFile("service.log", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
 		panic(err)
@@ -128,7 +128,8 @@ func TestTransferHandler(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			mockUsecase := mocks.NewTransactionUsecase(t)
 			mockAccountUsecase := mocks.NewAccountsUsecase(t)
-			handler := NewHandler(mockUsecase, mockAccountUsecase, serlog)
+			mockAuthUsecase := mocks.NewAuthUseCase(t)
+			handler := NewHandler(mockUsecase, mockAccountUsecase, mockAuthUsecase, serlog)
 
 			var senderID, receiverID uuid.UUID
 			var amount decimal.Decimal
@@ -280,7 +281,8 @@ func TestGetTransactionHandler(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			mockUsecase := mocks.NewTransactionUsecase(t)
 			mockAccountUsecase := mocks.NewAccountsUsecase(t)
-			handler := NewHandler(mockUsecase, mockAccountUsecase, serlog)
+			mockAuthUsecae := mocks.NewAuthUseCase(t)
+			handler := NewHandler(mockUsecase, mockAccountUsecase, mockAuthUsecae, serlog)
 
 			tt.setupMock(mockUsecase)
 
@@ -486,7 +488,8 @@ func TestTransactionFilterHandler(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			mockUsecase := mocks.NewTransactionUsecase(t)
 			mockAccountUsecase := mocks.NewAccountsUsecase(t)
-			handler := NewHandler(mockUsecase, mockAccountUsecase, serlog)
+			mockAuthUsecae := mocks.NewAuthUseCase(t)
+			handler := NewHandler(mockUsecase, mockAccountUsecase, mockAuthUsecae, serlog)
 
 			tt.setupMock(mockUsecase)
 

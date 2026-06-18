@@ -90,15 +90,13 @@ func (h *handler) Refresh(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			RefreshToken string `json:"refresh_token"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeError(w, http.StatusBadRequest, err, 0)
-			return
+		if err := json.NewDecoder(r.Body).Decode(&req); err == nil {
+			refreshToken = req.RefreshToken
 		}
-		refreshToken = req.RefreshToken
 	}
 	ip := r.RemoteAddr
 	if refreshToken == "" {
-		writeError(w, http.StatusBadRequest, errors.New("refresh token отсутствует"), 0)
+		writeError(w, http.StatusBadRequest, errors.New("refresh token отсутствует"), 1)
 		return
 	}
 
@@ -127,14 +125,14 @@ func (h *handler) Logout(w http.ResponseWriter, r *http.Request) {
 			RefreshToken string `json:"refresh_token"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeError(w, http.StatusBadRequest, errors.New("refresh token отстутствует"), 0)
+			writeError(w, http.StatusBadRequest, errors.New("refresh token отсутствует"), 0)
 			return
 		}
 		refreshToken = req.RefreshToken
 	}
 	ip := r.RemoteAddr
 	if refreshToken == "" {
-		writeError(w, http.StatusBadRequest, errors.New("refresh token отстутствует"), 0)
+		writeError(w, http.StatusBadRequest, errors.New("refresh token отсутствует"), 0)
 		return
 	}
 
@@ -154,7 +152,7 @@ func (h *handler) LogoutAll(w http.ResponseWriter, r *http.Request) {
 
 	ctxUserID, ok := r.Context().Value("user_id").(string)
 	if !ok {
-		writeError(w, http.StatusBadRequest, errors.New("поле user_id должно быть string"), 0)
+		writeError(w, http.StatusBadRequest, errors.New("поле user_id должно быть string"), 1)
 		return
 	}
 
