@@ -4,37 +4,19 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"processing/internal/domain"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )
 
-type AccessClaims struct {
-	UserID string `json:"user_id"`
-	Role   string `json:"role"`
-	jwt.RegisteredClaims
-}
-
-type RefreshClaims struct {
-	UserID string `json:"user_id"`
-	jwt.RegisteredClaims
-}
-
-type TokenPair struct {
-	AccessToken  string    `json:"access_token"`
-	RefreshToken string    `json:"refresh_token"`
-	ExpiresIn    int64     `json:"expires_in"`
-	JTI          string    `json:"-"`
-	ExpiresAt    time.Time `json:"-"`
-}
-
 const (
 	AccessTokenDuration  = 15 * time.Minute
 	RefreshTokenDuration = 7 * 24 * time.Hour
 )
 
-func GenerateTokenPair(userID string, role string) (*TokenPair, error) {
+func GenerateTokenPair(userID string, role string) (*domain.TokenPair, error) {
 	accessSecretKey := os.Getenv("accessSecretKey")
 	refreshSecretKey := os.Getenv("refreshSecretKey")
 
@@ -46,7 +28,7 @@ func GenerateTokenPair(userID string, role string) (*TokenPair, error) {
 	accessExpiresAt := now.Add(AccessTokenDuration)
 	refreshExpiresAt := now.Add(RefreshTokenDuration)
 
-	accessClaims := AccessClaims{
+	accessClaims := domain.AccessClaims{
 		UserID: userID,
 		Role:   role,
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -66,7 +48,7 @@ func GenerateTokenPair(userID string, role string) (*TokenPair, error) {
 		return nil, fmt.Errorf("ошибка генерации JTI: %w", err)
 	}
 
-	refreshClaims := RefreshClaims{
+	refreshClaims := domain.RefreshClaims{
 		UserID: userID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ID:        jti.String(),
@@ -81,7 +63,7 @@ func GenerateTokenPair(userID string, role string) (*TokenPair, error) {
 		return nil, fmt.Errorf("ошибка создания refresh token: %w", err)
 	}
 
-	return &TokenPair{
+	return &domain.TokenPair{
 		AccessToken:  accessSigned,
 		RefreshToken: refreshSigned,
 		ExpiresIn:    int64(AccessTokenDuration.Seconds()),
@@ -90,11 +72,11 @@ func GenerateTokenPair(userID string, role string) (*TokenPair, error) {
 	}, nil
 }
 
-func ValidateAccessToken(tokenString string) (*AccessClaims, error) {
+func ValidateAccessToken(tokenString string) (*domain.AccessClaims, error) {
 	accessSecretKey := os.Getenv("accessSecretKey")
 
 	token, err := jwt.ParseWithClaims(
-		tokenString, &AccessClaims{},
+		tokenString, &domain.AccessClaims{},
 		func(t *jwt.Token) (interface{}, error) {
 			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, fmt.Errorf("неверный алгоритм: %v", t.Header["alg"])
@@ -111,7 +93,7 @@ func ValidateAccessToken(tokenString string) (*AccessClaims, error) {
 		return nil, fmt.Errorf("парсинг jwt токена: %w", err)
 	}
 
-	claims, ok := token.Claims.(*AccessClaims)
+	claims, ok := token.Claims.(*domain.AccessClaims)
 	if !ok {
 		return nil, errors.New("невалидные claims")
 	}
@@ -119,12 +101,12 @@ func ValidateAccessToken(tokenString string) (*AccessClaims, error) {
 	return claims, nil
 }
 
-func ValidateRefreshToken(tokenString string) (*RefreshClaims, error) {
+func ValidateRefreshToken(tokenString string) (*domain.RefreshClaims, error) {
 	refreshSecretKey := os.Getenv("refreshSecretKey")
 
 	token, err := jwt.ParseWithClaims(
 		tokenString,
-		&RefreshClaims{},
+		&domain.RefreshClaims{},
 		func(t *jwt.Token) (interface{}, error) {
 			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, fmt.Errorf("невалидный алгоритм: %v", t.Header["alg"])
@@ -141,7 +123,7 @@ func ValidateRefreshToken(tokenString string) (*RefreshClaims, error) {
 		return nil, fmt.Errorf("парсинг jwt токена: %w", err)
 	}
 
-	claims, ok := token.Claims.(*RefreshClaims)
+	claims, ok := token.Claims.(*domain.RefreshClaims)
 	if !ok {
 		return nil, errors.New("невалидные claims")
 	}

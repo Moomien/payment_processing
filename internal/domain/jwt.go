@@ -16,18 +16,11 @@ type RefreshSession struct {
 
 // TokenPair пара токенов для клиента
 type TokenPair struct {
-	AccessToken  string `json:"access_token"`
-	RefreshToken string `json:"refresh_token"`
-	ExpiresIn    int64  `json:"expires_in"`
-}
-
-// TokenPairInternal внутренняя структура для usecase слоя
-type TokenPairInternal struct {
-	AccessToken  string
-	RefreshToken string
-	ExpiresIn    int64
-	JTI          string
-	ExpiresAt    time.Time
+	AccessToken  string    `json:"access_token"`
+	RefreshToken string    `json:"refresh_token"`
+	ExpiresIn    int64     `json:"expires_in"`
+	JTI          string    `json:"-"`
+	ExpiresAt    time.Time `json:"-"`
 }
 
 type AccessClaims struct {
@@ -38,6 +31,5 @@ type AccessClaims struct {
 
 type RefreshClaims struct {
 	UserID string `json:"user_id"`
-	JTI    string `json:"jti"`
 	jwt.RegisteredClaims
 }
