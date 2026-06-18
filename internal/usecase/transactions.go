@@ -3,9 +3,7 @@ package usecase
 import (
 	"context"
 	"fmt"
-	"io"
 	"log/slog"
-	"os"
 	"processing/internal/decimal"
 	"processing/internal/domain"
 	"time"
@@ -19,18 +17,11 @@ type TransactionsService struct {
 	log   *slog.Logger
 }
 
-func NewService(tx domain.TxUOW, cache domain.Cache, loggerPath string) *TransactionsService {
-	file, err := os.OpenFile(loggerPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	if err != nil {
-		panic(err)
-	}
-	logger := slog.New(slog.NewJSONHandler(io.MultiWriter(os.Stdout, file), nil))
-	slog.SetDefault(logger)
-	slog.Info("создан логгер")
+func NewTransactionsService(txUOW domain.TxUOW, cache domain.Cache, log *slog.Logger) *TransactionsService {
 	return &TransactionsService{
-		tx:    tx,
+		tx:    txUOW,
 		cache: cache,
-		log:   logger,
+		log:   log,
 	}
 }
 

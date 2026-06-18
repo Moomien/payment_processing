@@ -4,9 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
-	"os"
 	jwtLayer "processing/internal/delivery/http/jwt"
 	"processing/internal/domain"
 	"time"
@@ -21,16 +19,11 @@ type AuthService struct {
 	log   *slog.Logger
 }
 
-func NewAuthService(tx domain.TxUOW, cache domain.Cache, loggerPath string) *AuthService {
-	file, err := os.OpenFile(loggerPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	if err != nil {
-		panic(err)
-	}
-	logger := slog.New(slog.NewJSONHandler(io.MultiWriter(os.Stdout, file), nil))
+func NewAuthService(tx domain.TxUOW, cache domain.Cache, log *slog.Logger) *AuthService {
 	return &AuthService{
 		tx:    tx,
 		cache: cache,
-		log:   logger,
+		log:   log,
 	}
 }
 

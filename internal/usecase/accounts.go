@@ -3,10 +3,8 @@ package usecase
 import (
 	"context"
 	"errors"
-	"io"
 	"log/slog"
 	"net/mail"
-	"os"
 	"processing/internal/domain"
 	"time"
 
@@ -23,18 +21,11 @@ type AccountsService struct {
 	log   *slog.Logger
 }
 
-func NewAccountService(tx domain.TxUOW, cache domain.Cache, loggerPath string) *AccountsService {
-	file, err := os.OpenFile(loggerPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	if err != nil {
-		panic(err)
-	}
-	logger := slog.New(slog.NewJSONHandler(io.MultiWriter(os.Stdout, file), nil))
-	slog.SetDefault(logger)
-	slog.Info("создан логгер")
+func NewAccountService(tx domain.TxUOW, cache domain.Cache, log *slog.Logger) *AccountsService {
 	return &AccountsService{
 		tx:    tx,
 		cache: cache,
-		log:   logger,
+		log:   log,
 	}
 }
 
