@@ -1,1 +1,1 @@
-env
+./internal/delivery/http/jwt/.env
