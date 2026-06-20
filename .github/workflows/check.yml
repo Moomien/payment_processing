@@ -1,7 +1,7 @@
 name: Check
 on: push
 jobs: 
-  lint:
+  golangci-lint:
     runs-on: ubuntu-latest
     steps: 
       - name: Checkout
