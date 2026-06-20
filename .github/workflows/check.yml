@@ -12,7 +12,10 @@ jobs:
         run: go vet ./...
   test:
     needs: [golangci-lint]
-    runs-on: ubuntu latest
+    strategy:
+      matrix:
+        go-version: ['1.25', '1.26']
+        os: ['ubuntu-latest', 'windows-latest']
     steps:
       - name: Checkout
         uses: actions/checkout@v7
