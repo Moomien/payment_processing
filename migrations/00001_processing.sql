@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS accounts (
 	name TEXT NOT NULL,
 	email TEXT NOT NULL UNIQUE,
 	password_hash TEXT NOT NULL,
-	role TEXT NOT NULL DEFAUL 'user',
+	role TEXT NOT NULL DEFAULT 'user',
 	balance NUMERIC(36, 18) NOT NULL DEFAULT 0, 
 	CONSTRAINT balance_is_positive CHECK (balance >= 0) 
 );

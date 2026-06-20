@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	jwtLayer "processing/internal/delivery/http/jwt"
 	"processing/internal/domain"
+	"processing/internal/infrastructure/logger"
 	"time"
 
 	"github.com/google/uuid"
@@ -20,6 +21,7 @@ type AuthService struct {
 }
 
 func NewAuthService(tx domain.TxUOW, cache domain.Cache, log *slog.Logger) *AuthService {
+	log = logger.WithService(log, "Auth")
 	return &AuthService{
 		tx:    tx,
 		cache: cache,
@@ -47,6 +49,7 @@ func (as *AuthService) Register(ctx context.Context, email, password, name strin
 
 	uow, err := as.tx.NewTX(ctx)
 	if err != nil {
+		as.log.ErrorContext(ctx, "ошибка создания транзакции", "err", err)
 		return nil, err
 	}
 	defer uow.Rollback()
@@ -64,6 +67,7 @@ func (as *AuthService) Register(ctx context.Context, email, password, name strin
 	}
 
 	if err := uow.Commit(); err != nil {
+		as.log.ErrorContext(ctx, "ошибка коммита транзакции", "err", err)
 		return nil, err
 	}
 
@@ -80,6 +84,7 @@ func (as *AuthService) Login(ctx context.Context, email, password string, ip str
 
 	uow, err := as.tx.NewTX(ctx)
 	if err != nil {
+		as.log.ErrorContext(ctx, "ошибка создания транзакции", "err", err)
 		return nil, err
 	}
 	defer uow.Rollback()
@@ -107,6 +112,7 @@ func (as *AuthService) Login(ctx context.Context, email, password string, ip str
 	}
 
 	if err := uow.Commit(); err != nil {
+		as.log.ErrorContext(ctx, "ошибка транзакции", "err", err)
 		return nil, err
 	}
 
@@ -134,6 +140,7 @@ func (as *AuthService) Refresh(ctx context.Context, refreshToken string, ip stri
 
 	uow, err := as.tx.NewTX(ctx)
 	if err != nil {
+		as.log.ErrorContext(ctx, "ошибка создания транзакции", "err", err)
 		return nil, err
 	}
 	defer uow.Rollback()
@@ -180,6 +187,7 @@ func (as *AuthService) Refresh(ctx context.Context, refreshToken string, ip stri
 	}
 
 	if err := uow.Commit(); err != nil {
+		as.log.ErrorContext(ctx, "ошибка транзакции", "err", err)
 		return nil, err
 	}
 
@@ -207,6 +215,7 @@ func (as *AuthService) Logout(ctx context.Context, refreshToken string, ip strin
 
 	uow, err := as.tx.NewTX(ctx)
 	if err != nil {
+		as.log.ErrorContext(ctx, "ошибка создания транзакции", "err", err)
 		return err
 	}
 	defer uow.Rollback()
@@ -221,6 +230,7 @@ func (as *AuthService) Logout(ctx context.Context, refreshToken string, ip strin
 	}
 
 	if err := uow.Commit(); err != nil {
+		as.log.ErrorContext(ctx, "ошибка транзакции", "err", err)
 		return err
 	}
 
@@ -232,6 +242,7 @@ func (as *AuthService) Logout(ctx context.Context, refreshToken string, ip strin
 func (as *AuthService) LogoutAll(ctx context.Context, userID uuid.UUID) error {
 	uow, err := as.tx.NewTX(ctx)
 	if err != nil {
+		as.log.ErrorContext(ctx, "ошибка создания транзакции", "err", err)
 		return err
 	}
 	defer uow.Rollback()
@@ -242,6 +253,7 @@ func (as *AuthService) LogoutAll(ctx context.Context, userID uuid.UUID) error {
 	}
 
 	if err := uow.Commit(); err != nil {
+		as.log.ErrorContext(ctx, "ошибка транзакции", "err", err)
 		return err
 	}
 

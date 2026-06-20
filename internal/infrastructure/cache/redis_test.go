@@ -2,9 +2,6 @@ package cache
 
 import (
 	"context"
-	"io"
-	"log/slog"
-	"os"
 	"testing"
 	"time"
 
@@ -13,15 +10,9 @@ import (
 )
 
 func TestIdempotencyCheck(t *testing.T) {
-	file, err := os.OpenFile("redis_test.log", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer file.Close()
-	logger := slog.New(slog.NewJSONHandler(io.MultiWriter(os.Stdout, file), nil))
 	mr := miniredis.RunT(t)
 
-	client := NewRedis(mr.Addr(), logger)
+	client := NewRedis(mr.Addr())
 	key := "somekey"
 	if err := client.IdempotencyCheck(context.Background(), key, 24*time.Hour); err != nil {
 		t.Log(err)
@@ -34,15 +25,9 @@ func TestIdempotencyCheck(t *testing.T) {
 }
 
 func TestRedisMinutes(t *testing.T) {
-	file, err := os.OpenFile("redis_test.log", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer file.Close()
-	logger := slog.New(slog.NewJSONHandler(io.MultiWriter(os.Stdout, file), nil))
 	mr := miniredis.RunT(t)
 
-	client := NewRedis(mr.Addr(), logger)
+	client := NewRedis(mr.Addr())
 	userID, _ := uuid.NewUUID()
 	for range 5 {
 		if err := client.CheckRateLimit(context.Background(), userID.String()); err != nil {
@@ -64,14 +49,8 @@ func TestRedisMinutes(t *testing.T) {
 }
 
 func TestRedisHours(t *testing.T) {
-	file, err := os.OpenFile("redis_test.log", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer file.Close()
-	logger := slog.New(slog.NewJSONHandler(io.MultiWriter(os.Stdout, file), nil))
 	mr := miniredis.RunT(t)
-	client := NewRedis(mr.Addr(), logger)
+	client := NewRedis(mr.Addr())
 	userID, _ := uuid.NewUUID()
 
 	for range 60 {
@@ -97,14 +76,8 @@ func TestRedisHours(t *testing.T) {
 }
 
 func TestRedisDay(t *testing.T) {
-	file, err := os.OpenFile("redis_test.log", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer file.Close()
-	logger := slog.New(slog.NewJSONHandler(io.MultiWriter(os.Stdout, file), nil))
 	mr := miniredis.RunT(t)
-	client := NewRedis(mr.Addr(), logger)
+	client := NewRedis(mr.Addr())
 	userID, _ := uuid.NewUUID()
 
 	for range 200 {

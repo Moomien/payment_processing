@@ -3,6 +3,7 @@ package handlers
 import (
 	"log/slog"
 	"processing/internal/domain"
+	"processing/internal/logger"
 )
 
 type handler struct {
@@ -18,6 +19,7 @@ func NewHandler(
 	auth domain.AuthUseCase,
 	log *slog.Logger,
 ) *handler {
+	log = logger.WithService(log, "handler")
 	return &handler{
 		ts:   ts,
 		as:   as,

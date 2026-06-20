@@ -2,25 +2,20 @@ package main
 
 import (
 	"database/sql"
-	"fmt"
-	"io"
 	"log"
 	"log/slog"
 	"net/http"
 	"os"
 
+	"processing/internal/config"
 	handlers "processing/internal/delivery/http"
 	"processing/internal/delivery/http/middleware"
 	"processing/internal/infrastructure/cache"
+	"processing/internal/infrastructure/logger"
 	"processing/internal/infrastructure/storage"
 	"processing/internal/usecase"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
-)
-
-const (
-	db_url    = "postgres://admin:secret@localhost:5432/postgres_bd"
-	redis_url = "localhost:6379"
 )
 
 func main() {
@@ -30,70 +25,40 @@ func main() {
 }
 
 func run() error {
-	stor, err := os.OpenFile("storage.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	cfg, err := config.Load()
 	if err != nil {
 		panic(err)
 	}
-	defer stor.Close()
 
-	redis, err := os.OpenFile("redis.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	logger, err := logger.NewLogger(cfg.LogLevel, cfg.Environment)
 	if err != nil {
 		panic(err)
 	}
-	defer redis.Close()
 
-	transaction, err := os.OpenFile("transactions_service.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	postgres_url := cfg.Postgres.PostgresDSN()
+	db, err := sql.Open("pgx", postgres_url)
 	if err != nil {
-		panic(err)
-	}
-	defer transaction.Close()
-
-	accounts, err := os.OpenFile("accounts_serivce.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	if err != nil {
-		panic(err)
-	}
-	defer accounts.Close()
-
-	auth, err := os.OpenFile("auth_service.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	if err != nil {
-		panic(err)
-	}
-	defer auth.Close()
-
-	h, err := os.OpenFile("handler.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	if err != nil {
-		panic(err)
-	}
-	defer h.Close()
-
-	storagelog := slog.New(slog.NewJSONHandler(io.MultiWriter(os.Stdout, stor), nil))
-	redislog := slog.New(slog.NewJSONHandler(io.MultiWriter(os.Stdout, redis), nil))
-	transactionlog := slog.New(slog.NewJSONHandler(io.MultiWriter(os.Stdout, transaction), nil))
-	accountlog := slog.New(slog.NewJSONHandler(io.MultiWriter(os.Stdout, accounts), nil))
-	authlog := slog.New(slog.NewJSONHandler(io.MultiWriter(os.Stdout, auth), nil))
-	handlerlog := slog.New(slog.NewJSONHandler(io.MultiWriter(os.Stdout, h), nil))
-
-	db, err := sql.Open("pgx", db_url)
-	if err != nil {
-		fmt.Println("не получилось подключиться к бд:", err)
+		logger.Debug("не получилось подключиться к бд", "err", err)
 		return err
 	}
-
 	if err := db.Ping(); err != nil {
-		fmt.Println("не получилось пингануть бд:", err)
+		logger.Debug("не получилось пингануть бд", "err", err)
 		return err
 	}
 	slog.Info("Успешное подключение к бд!")
 
-	tx := storage.NewUoWFactory(db, storagelog)
-	cache := cache.NewRedis(redis_url, redislog)
+	redis_url := cfg.Redis.RedisDSN()
+	cache := cache.NewRedis(redis_url)
 	//kafka
+	////
+	////
 
-	transactionService := usecase.NewTransactionsService(tx, cache, transactionlog)
-	accountsService := usecase.NewAccountService(tx, cache, accountlog)
-	authService := usecase.NewAuthService(tx, cache, authlog)
+	tx := storage.NewUoWFactory(db)
+	transactionService := usecase.NewTransactionsService(tx, cache, logger)
+	accountsService := usecase.NewAccountService(tx, cache, logger)
+	authService := usecase.NewAuthService(tx, cache, logger)
 
-	handler := handlers.NewHandler(transactionService, accountsService, authService, handlerlog)
+	handler := handlers.NewHandler(transactionService, accountsService, authService, logger)
 
 	router := http.NewServeMux()
 

@@ -48,11 +48,11 @@ type Redis struct {
 	log    *slog.Logger
 }
 
-func NewRedis(addr string, log *slog.Logger) *Redis {
+func NewRedis(addr string) *Redis {
 	c := redis.NewClient(&redis.Options{
 		Addr: addr,
 	})
-	return &Redis{client: c, log: log}
+	return &Redis{client: c}
 }
 
 // IdempotencyCheck добавляет идемпотентности операции, проверяет не был ли уже такой запрос от ключа
@@ -73,17 +73,14 @@ func (redis *Redis) IdempotencyCheck(ctx context.Context, key string, TTL time.D
 // принимает контекст и какой то id(user_id, ip, etc..)
 func (redis *Redis) CheckRateLimit(ctx context.Context, id string) error {
 	if err := redis.checkWindow(ctx, id, 5, time.Minute, "min"); err != nil {
-		redis.log.InfoContext(ctx, "увеличение счетчика окна", "err", err)
 		return err
 	}
 
 	if err := redis.checkWindow(ctx, id, 60, time.Hour, "hour"); err != nil {
-		redis.log.InfoContext(ctx, "увеличение счетчика окна", "err", err)
 		return err
 	}
 
 	if err := redis.checkWindow(ctx, id, 200, 24*time.Hour, "day"); err != nil {
-		redis.log.InfoContext(ctx, "увеличение счетчика окна", "err", err)
 		return err
 	}
 

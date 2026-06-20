@@ -3,9 +3,9 @@ services:
     image: postgres:16
     container_name: postgres_bd
     environment:
-      POSTGRES_DB: postgres_bd
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: ${PG_DB}
+      POSTGRES_USER: ${PG_USER}
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
     ports:
       - "5432:5432"
     volumes:
@@ -13,6 +13,8 @@ services:
 
   redis:
     image: redis:latest
+    container_name: redis_bd
+    command: redis-server --user ${REDIS_USER} on >${REDIS_PASSWORD} ~* +@all
     ports:
       - "6379:6379"
     volumes:

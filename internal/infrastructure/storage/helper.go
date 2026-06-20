@@ -3,19 +3,17 @@ package storage
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"processing/internal/decimal"
 	"processing/internal/domain"
 
 	"github.com/google/uuid"
 )
 
-func sqlrequest(ctx context.Context, filter domain.TransactionFilter, log *slog.Logger) (string, []interface{}) {
+func sqlrequest(ctx context.Context, filter domain.TransactionFilter) (string, []interface{}) {
 	query := `SELECT id, amount, sender_id, receiver_id, status, created_at FROM transactions WHERE 1=1`
 	args := []interface{}{}
 	argCounter := 1
 
-	// Добавляем условия в зависимости от фильтров
 	if filter.AccountID != uuid.Nil {
 		query += fmt.Sprintf(" AND(receiver_id = $%d OR sender_id = $%d)", argCounter, argCounter)
 		args = append(args, filter.AccountID)
@@ -37,7 +35,6 @@ func sqlrequest(ctx context.Context, filter domain.TransactionFilter, log *slog.
 	if filter.MinAmount != "" {
 		minAmount, err := decimal.NewFromString(filter.MinAmount)
 		if err != nil {
-			log.ErrorContext(ctx, "ошибка конвертации минимальной суммы", "error", err, "min_amount", filter.MinAmount)
 			return "", nil
 		}
 		query += fmt.Sprintf(" AND amount >= $%d", argCounter)
@@ -48,7 +45,6 @@ func sqlrequest(ctx context.Context, filter domain.TransactionFilter, log *slog.
 	if filter.MaxAmount != "" {
 		maxAmount, err := decimal.NewFromString(filter.MaxAmount)
 		if err != nil {
-			log.ErrorContext(ctx, "ошибка конвертации максимальной суммы", "error", err, "max_amount", filter.MaxAmount)
 			return "", nil
 		}
 		query += fmt.Sprintf(" AND amount <= $%d", argCounter)
