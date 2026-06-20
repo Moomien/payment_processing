@@ -13,10 +13,6 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-var (
-	ErrAccountAlreadyExist = errors.New("Account already exists")
-)
-
 type accountRepo struct {
 	tx *sql.Tx
 }
@@ -78,7 +74,7 @@ func (s *accountRepo) Create(ctx context.Context, ac *domain.Account) error {
 	if _, err := s.tx.ExecContext(ctx, query, ac.ID, ac.Name, ac.Email, ac.Balance, ac.PasswordHash, ac.Role); err != nil {
 		var pgerr *pgconn.PgError
 		if errors.As(err, &pgerr) && pgerr.Code == "23505" {
-			return ErrAccountAlreadyExist
+			return domain.ErrAccountAlreadyExist
 		}
 		return fmt.Errorf("создание аккакунта: %w", err)
 	}

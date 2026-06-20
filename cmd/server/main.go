@@ -7,10 +7,10 @@ import (
 	"net/http"
 	"os"
 
-	"processing/internal/config"
 	handlers "processing/internal/delivery/http"
 	"processing/internal/delivery/http/middleware"
 	"processing/internal/infrastructure/cache"
+	"processing/internal/infrastructure/config"
 	"processing/internal/infrastructure/logger"
 	"processing/internal/infrastructure/storage"
 	"processing/internal/usecase"
@@ -48,7 +48,12 @@ func run() error {
 	slog.Info("Успешное подключение к бд!")
 
 	redis_url := cfg.Redis.RedisDSN()
-	cache := cache.NewRedis(redis_url)
+	cache := cache.NewRedis(cache.NewRedisOptions{
+		Addr:          redis_url,
+		RateLimitMin:  cfg.Redis.RateLimitMin,
+		RateLimitHour: cfg.Redis.RateLimitHour,
+		RateLimitDay:  cfg.Redis.RateLimitDay,
+	})
 	//kafka
 	////
 	////

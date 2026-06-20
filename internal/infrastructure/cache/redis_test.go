@@ -12,7 +12,12 @@ import (
 func TestIdempotencyCheck(t *testing.T) {
 	mr := miniredis.RunT(t)
 
-	client := NewRedis(mr.Addr())
+	client := NewRedis(NewRedisOptions{
+		Addr:          mr.Addr(),
+		RateLimitMin:  5,
+		RateLimitHour: 60,
+		RateLimitDay:  200,
+	})
 	key := "somekey"
 	if err := client.IdempotencyCheck(context.Background(), key, 24*time.Hour); err != nil {
 		t.Log(err)
@@ -27,7 +32,12 @@ func TestIdempotencyCheck(t *testing.T) {
 func TestRedisMinutes(t *testing.T) {
 	mr := miniredis.RunT(t)
 
-	client := NewRedis(mr.Addr())
+	client := NewRedis(NewRedisOptions{
+		Addr:          mr.Addr(),
+		RateLimitMin:  5,
+		RateLimitHour: 60,
+		RateLimitDay:  200,
+	})
 	userID, _ := uuid.NewUUID()
 	for range 5 {
 		if err := client.CheckRateLimit(context.Background(), userID.String()); err != nil {
@@ -50,7 +60,12 @@ func TestRedisMinutes(t *testing.T) {
 
 func TestRedisHours(t *testing.T) {
 	mr := miniredis.RunT(t)
-	client := NewRedis(mr.Addr())
+	client := NewRedis(NewRedisOptions{
+		Addr:          mr.Addr(),
+		RateLimitMin:  5,
+		RateLimitHour: 60,
+		RateLimitDay:  200,
+	})
 	userID, _ := uuid.NewUUID()
 
 	for range 60 {
@@ -77,7 +92,12 @@ func TestRedisHours(t *testing.T) {
 
 func TestRedisDay(t *testing.T) {
 	mr := miniredis.RunT(t)
-	client := NewRedis(mr.Addr())
+	client := NewRedis(NewRedisOptions{
+		Addr:          mr.Addr(),
+		RateLimitMin:  5,
+		RateLimitHour: 60,
+		RateLimitDay:  200,
+	})
 	userID, _ := uuid.NewUUID()
 
 	for range 200 {

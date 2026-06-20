@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"processing/internal/domain"
 
 	"github.com/google/uuid"
 )
@@ -31,7 +32,11 @@ func (h *handler) Register(w http.ResponseWriter, r *http.Request) {
 
 	account, err := h.auth.Register(ctx, dto.Email, dto.Password, dto.Name, ip)
 	if err != nil {
-		writeError(w, 500, err, 0)
+		if errors.Is(err, domain.ErrAccountAlreadyExist) {
+			writeError(w, http.StatusConflict, err, 0)
+			return
+		}
+		writeError(w, http.StatusInternalServerError, err, 0)
 		return
 	}
 
@@ -58,7 +63,7 @@ func (h *handler) Login(w http.ResponseWriter, r *http.Request) {
 
 	var dto AuthDTO
 	if err := json.NewDecoder(r.Body).Decode(&dto); err != nil {
-		writeError(w, 400, err, 0)
+		writeError(w, http.StatusBadRequest, err, 0)
 		return
 	}
 
@@ -68,6 +73,10 @@ func (h *handler) Login(w http.ResponseWriter, r *http.Request) {
 
 	token, err := h.auth.Login(ctx, dto.Email, dto.Password, ip)
 	if err != nil {
+		if errors.Is(err, domain.ErrInvalidCredentials) {
+			writeError(w, http.StatusUnauthorized, err, 0)
+			return
+		}
 		writeError(w, http.StatusInternalServerError, err, 1)
 		return
 	}

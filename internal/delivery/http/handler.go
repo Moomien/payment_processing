@@ -3,7 +3,7 @@ package handlers
 import (
 	"log/slog"
 	"processing/internal/domain"
-	"processing/internal/logger"
+	"processing/internal/infrastructure/logger"
 )
 
 type handler struct {

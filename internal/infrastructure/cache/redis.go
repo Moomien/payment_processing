@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -21,13 +20,13 @@ var (
 // ARGV[2] - окно времени в секундах
 // ARGV[3] - лимит запросов
 // ARGV[4] - уникальный идентификатор запроса
-var rateLimitScript = redis.NewScript(`
+var rateLimitScript = redis.NewScript(
+	`
 	local key = KEYS[1]
 	local now = tonumber(ARGV[1])
 	local window = tonumber(ARGV[2])
 	local limit = tonumber(ARGV[3])
 	local request_id = ARGV[4]
-	
 	local min_time = now - window
 	redis.call('ZREMRANGEBYSCORE', key, '-inf', min_time)
 
@@ -37,22 +36,35 @@ var rateLimitScript = redis.NewScript(`
 		return 0
 	end
 	redis.call('ZADD', key, now, request_id)
-	
 	redis.call('EXPIRE', key, window + 10)
-	
 	return 1
-`)
+`,
+)
 
 type Redis struct {
-	client *redis.Client
-	log    *slog.Logger
+	client        *redis.Client
+	rateLimitMin  int64
+	rateLimitHour int64
+	rateLimitDay  int64
 }
 
-func NewRedis(addr string) *Redis {
+type NewRedisOptions struct {
+	Addr          string
+	RateLimitMin  int64
+	RateLimitHour int64
+	RateLimitDay  int64
+}
+
+func NewRedis(opts NewRedisOptions) *Redis {
 	c := redis.NewClient(&redis.Options{
-		Addr: addr,
+		Addr: opts.Addr,
 	})
-	return &Redis{client: c}
+	return &Redis{
+		client:        c,
+		rateLimitMin:  opts.RateLimitMin,
+		rateLimitHour: opts.RateLimitHour,
+		rateLimitDay:  opts.RateLimitDay,
+	}
 }
 
 // IdempotencyCheck добавляет идемпотентности операции, проверяет не был ли уже такой запрос от ключа
@@ -72,15 +84,15 @@ func (redis *Redis) IdempotencyCheck(ctx context.Context, key string, TTL time.D
 // CheckRateLimit ограничивает запросы от пользователя
 // принимает контекст и какой то id(user_id, ip, etc..)
 func (redis *Redis) CheckRateLimit(ctx context.Context, id string) error {
-	if err := redis.checkWindow(ctx, id, 5, time.Minute, "min"); err != nil {
+	if err := redis.checkWindow(ctx, id, redis.rateLimitMin, time.Minute, "min"); err != nil {
 		return err
 	}
 
-	if err := redis.checkWindow(ctx, id, 60, time.Hour, "hour"); err != nil {
+	if err := redis.checkWindow(ctx, id, redis.rateLimitHour, time.Hour, "hour"); err != nil {
 		return err
 	}
 
-	if err := redis.checkWindow(ctx, id, 200, 24*time.Hour, "day"); err != nil {
+	if err := redis.checkWindow(ctx, id, redis.rateLimitDay, 24*time.Hour, "day"); err != nil {
 		return err
 	}
 

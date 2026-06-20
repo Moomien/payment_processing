@@ -8,6 +8,7 @@ var (
 	ErrInvalidAmount           = errors.New("сумма должна быть положительной")
 	ErrSameAccount             = errors.New("отправитель и получатель должны быть разными")
 	ErrReceiverAccountNotFound = errors.New("receiver аккаунт не найден")
+	ErrAccountAlreadyExist     = errors.New("аккаунт уже существует")
 )
 
 var (

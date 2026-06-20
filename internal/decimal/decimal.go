@@ -1,6 +1,7 @@
 package decimal
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"math/big"
@@ -269,4 +270,34 @@ func (d Decimal) Sign() int {
 //	false if d < 0
 func (d Decimal) IsPositive() bool {
 	return d.Sign() == 1
+}
+
+func Zero() Decimal {
+	return Decimal{
+		value: big.NewInt(0),
+		exp:   0,
+	}
+}
+
+// MarshalJSON implements json.Marshaler
+func (d Decimal) MarshalJSON() ([]byte, error) {
+	return json.Marshal(d.String())
+}
+
+// UnmarshalJSON implements json.Unmarshaler
+func (d *Decimal) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		// If it's not a string, try to unmarshal as number and convert to string
+		var n float64
+		if err2 := json.Unmarshal(data, &n); err2 == nil {
+			s = strconv.FormatFloat(n, 'f', -1, 64)
+		} else {
+			return err
+		}
+	}
+
+	var err error
+	*d, err = NewFromString(s)
+	return err
 }

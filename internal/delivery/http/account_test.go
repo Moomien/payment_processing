@@ -4,11 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"processing/internal/decimal"
 	"processing/internal/delivery/http/mocks"
 	"processing/internal/domain"
@@ -22,15 +19,7 @@ import (
 )
 
 func TestGetAccountHandler(t *testing.T) {
-	service, err := os.OpenFile("service.log", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-	if err != nil {
-		panic(err)
-	}
-	defer service.Close()
-
-	serlog := slog.New(slog.NewJSONHandler(io.MultiWriter(os.Stdout, service), nil))
-
-	validAccountID := uuid.MustParse("123e4567-e89b-12d3-a456-426614174000")
+	testUserID := uuid.MustParse("123e4567-e89b-12d3-a456-426614174000")
 
 	tests := []struct {
 		name               string
@@ -41,11 +30,11 @@ func TestGetAccountHandler(t *testing.T) {
 	}{
 		{
 			name:      "успешное получение аккаунта",
-			accountID: validAccountID.String(),
+			accountID: testUserID.String(),
 			setupMock: func(m *mocks.AccountsUsecase) {
 				balance, _ := decimal.NewFromString("1000.50")
 				expectedAccount := &domain.Account{
-					ID:           validAccountID,
+					ID:           testUserID,
 					Name:         "Test User",
 					Email:        "test@example.com",
 					Balance:      balance,
@@ -54,7 +43,7 @@ func TestGetAccountHandler(t *testing.T) {
 				}
 				m.On("GetAccount",
 					mock.Anything,
-					validAccountID,
+					testUserID,
 				).Return(expectedAccount, nil).Once()
 			},
 			expectedStatusCode: http.StatusOK,
@@ -65,16 +54,24 @@ func TestGetAccountHandler(t *testing.T) {
 			accountID: "invalid-uuid",
 			setupMock: func(m *mocks.AccountsUsecase) {
 			},
-			expectedStatusCode: http.StatusInternalServerError,
+			expectedStatusCode: http.StatusBadRequest,
+			expectError:        true,
+		},
+		{
+			name:      "доступ запрещен к чужому аккаунту",
+			accountID: uuid.MustParse("123e4567-e89b-12d3-a456-426614174001").String(),
+			setupMock: func(m *mocks.AccountsUsecase) {
+			},
+			expectedStatusCode: http.StatusForbidden,
 			expectError:        true,
 		},
 		{
 			name:      "аккаунт не найден",
-			accountID: validAccountID.String(),
+			accountID: testUserID.String(),
 			setupMock: func(m *mocks.AccountsUsecase) {
 				m.On("GetAccount",
 					mock.Anything,
-					validAccountID,
+					testUserID,
 				).Return(nil, errors.New("аккаунт не найден")).Once()
 			},
 			expectedStatusCode: http.StatusInternalServerError,
@@ -82,11 +79,11 @@ func TestGetAccountHandler(t *testing.T) {
 		},
 		{
 			name:      "ошибка БД при получении аккаунта",
-			accountID: validAccountID.String(),
+			accountID: testUserID.String(),
 			setupMock: func(m *mocks.AccountsUsecase) {
 				m.On("GetAccount",
 					mock.Anything,
-					validAccountID,
+					testUserID,
 				).Return(nil, errors.New("database connection error")).Once()
 			},
 			expectedStatusCode: http.StatusInternalServerError,
@@ -99,12 +96,14 @@ func TestGetAccountHandler(t *testing.T) {
 			mockAccountUsecase := mocks.NewAccountsUsecase(t)
 			mockTransactionUsecase := mocks.NewTransactionUsecase(t)
 			mockAuthUsecase := mocks.NewAuthUseCase(t)
-			handler := NewHandler(mockTransactionUsecase, mockAccountUsecase, mockAuthUsecase, serlog)
+			handler := NewHandler(mockTransactionUsecase, mockAccountUsecase, mockAuthUsecase, nil)
 
 			tt.setupMock(mockAccountUsecase)
 
-			req := httptest.NewRequest(http.MethodGet, "/accounts/"+tt.accountID+"?id="+tt.accountID, nil)
-			req = req.WithContext(context.Background())
+			req := httptest.NewRequest(http.MethodGet, "/accounts/"+tt.accountID, nil)
+			req.SetPathValue("id", tt.accountID)
+			ctx := context.WithValue(context.Background(), "user_id", testUserID.String())
+			req = req.WithContext(ctx)
 
 			rr := httptest.NewRecorder()
 			handler.GetAccount(rr, req)
@@ -118,7 +117,7 @@ func TestGetAccountHandler(t *testing.T) {
 				var response domain.Account
 				err := json.Unmarshal(rr.Body.Bytes(), &response)
 				assert.NoError(t, err, "ответ должен быть валидным JSON")
-				assert.Equal(t, validAccountID, response.ID)
+				assert.Equal(t, testUserID, response.ID)
 				assert.NotEmpty(t, response.Name)
 				assert.NotEmpty(t, response.Email)
 			}
@@ -128,15 +127,7 @@ func TestGetAccountHandler(t *testing.T) {
 }
 
 func TestAccountTransactionsHandler(t *testing.T) {
-	service, err := os.OpenFile("service.log", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-	if err != nil {
-		panic(err)
-	}
-	defer service.Close()
-
-	serlog := slog.New(slog.NewJSONHandler(io.MultiWriter(os.Stdout, service), nil))
-
-	validAccountID := uuid.MustParse("123e4567-e89b-12d3-a456-426614174000")
+	testUserID := uuid.MustParse("123e4567-e89b-12d3-a456-426614174000")
 	validTransactionID1 := uuid.MustParse("223e4567-e89b-12d3-a456-426614174001")
 	validTransactionID2 := uuid.MustParse("323e4567-e89b-12d3-a456-426614174002")
 
@@ -153,7 +144,7 @@ func TestAccountTransactionsHandler(t *testing.T) {
 	}{
 		{
 			name:      "успешное получение истории транзакций",
-			accountID: validAccountID.String(),
+			accountID: testUserID.String(),
 			limit:     "10",
 			offset:    "0",
 			setupMock: func(m *mocks.AccountsUsecase) {
@@ -163,7 +154,7 @@ func TestAccountTransactionsHandler(t *testing.T) {
 					{
 						ID:          validTransactionID1,
 						Amount:      amount1,
-						Sender_id:   validAccountID,
+						Sender_id:   testUserID,
 						Receiver_id: uuid.MustParse("423e4567-e89b-12d3-a456-426614174003"),
 						Status:      domain.StatusCompleted,
 						Created_at:  time.Now(),
@@ -172,14 +163,14 @@ func TestAccountTransactionsHandler(t *testing.T) {
 						ID:          validTransactionID2,
 						Amount:      amount2,
 						Sender_id:   uuid.MustParse("523e4567-e89b-12d3-a456-426614174004"),
-						Receiver_id: validAccountID,
+						Receiver_id: testUserID,
 						Status:      domain.StatusCompleted,
 						Created_at:  time.Now().Add(-24 * time.Hour),
 					},
 				}
 				m.On("TransactionHistory",
 					mock.Anything,
-					validAccountID,
+					testUserID,
 					10,
 					0,
 				).Return(25, expectedTransactions, nil).Once()
@@ -191,7 +182,7 @@ func TestAccountTransactionsHandler(t *testing.T) {
 		},
 		{
 			name:      "получение с пагинацией offset",
-			accountID: validAccountID.String(),
+			accountID: testUserID.String(),
 			limit:     "5",
 			offset:    "10",
 			setupMock: func(m *mocks.AccountsUsecase) {
@@ -200,7 +191,7 @@ func TestAccountTransactionsHandler(t *testing.T) {
 					{
 						ID:          validTransactionID1,
 						Amount:      amount,
-						Sender_id:   validAccountID,
+						Sender_id:   testUserID,
 						Receiver_id: uuid.MustParse("623e4567-e89b-12d3-a456-426614174005"),
 						Status:      domain.StatusCompleted,
 						Created_at:  time.Now(),
@@ -208,7 +199,7 @@ func TestAccountTransactionsHandler(t *testing.T) {
 				}
 				m.On("TransactionHistory",
 					mock.Anything,
-					validAccountID,
+					testUserID,
 					5,
 					10,
 				).Return(25, expectedTransactions, nil).Once()
@@ -220,13 +211,13 @@ func TestAccountTransactionsHandler(t *testing.T) {
 		},
 		{
 			name:      "пустая история транзакций",
-			accountID: validAccountID.String(),
+			accountID: testUserID.String(),
 			limit:     "10",
 			offset:    "0",
 			setupMock: func(m *mocks.AccountsUsecase) {
 				m.On("TransactionHistory",
 					mock.Anything,
-					validAccountID,
+					testUserID,
 					10,
 					0,
 				).Return(0, []domain.Transaction{}, nil).Once()
@@ -237,19 +228,19 @@ func TestAccountTransactionsHandler(t *testing.T) {
 			expectedCount:      0,
 		},
 		{
-			name:      "невалидный UUID аккаунта",
-			accountID: "invalid-uuid",
+			name:      "доступ запрещен к чужой истории",
+			accountID: uuid.MustParse("123e4567-e89b-12d3-a456-426614174001").String(),
 			limit:     "10",
 			offset:    "0",
 			setupMock: func(m *mocks.AccountsUsecase) {
 			},
-			expectedStatusCode: http.StatusInternalServerError,
+			expectedStatusCode: http.StatusForbidden,
 			expectError:        true,
 		},
 		{
-			name:      "невалидный limit параметр",
-			accountID: validAccountID.String(),
-			limit:     "invalid",
+			name:      "невалидный UUID аккаунта",
+			accountID: "invalid-uuid",
+			limit:     "10",
 			offset:    "0",
 			setupMock: func(m *mocks.AccountsUsecase) {
 			},
@@ -257,43 +248,53 @@ func TestAccountTransactionsHandler(t *testing.T) {
 			expectError:        true,
 		},
 		{
+			name:      "невалидный limit параметр",
+			accountID: testUserID.String(),
+			limit:     "invalid",
+			offset:    "0",
+			setupMock: func(m *mocks.AccountsUsecase) {
+				m.On("TransactionHistory",
+					mock.Anything,
+					testUserID,
+					10,
+					0,
+				).Return(25, []domain.Transaction{}, nil).Once()
+			},
+			expectedStatusCode: http.StatusOK,
+			expectError:        false,
+			expectedTotal:      25,
+			expectedCount:      0,
+		},
+		{
 			name:      "невалидный offset параметр",
-			accountID: validAccountID.String(),
+			accountID: testUserID.String(),
 			limit:     "10",
 			offset:    "invalid",
 			setupMock: func(m *mocks.AccountsUsecase) {
+				m.On("TransactionHistory",
+					mock.Anything,
+					testUserID,
+					10,
+					0,
+				).Return(25, []domain.Transaction{}, nil).Once()
 			},
-			expectedStatusCode: http.StatusInternalServerError,
-			expectError:        true,
+			expectedStatusCode: http.StatusOK,
+			expectError:        false,
+			expectedTotal:      25,
+			expectedCount:      0,
 		},
 		{
 			name:      "ошибка от usecase",
-			accountID: validAccountID.String(),
+			accountID: testUserID.String(),
 			limit:     "10",
 			offset:    "0",
 			setupMock: func(m *mocks.AccountsUsecase) {
 				m.On("TransactionHistory",
 					mock.Anything,
-					validAccountID,
+					testUserID,
 					10,
 					0,
 				).Return(0, nil, errors.New("database error")).Once()
-			},
-			expectedStatusCode: http.StatusInternalServerError,
-			expectError:        true,
-		},
-		{
-			name:      "аккаунт не найден",
-			accountID: validAccountID.String(),
-			limit:     "10",
-			offset:    "0",
-			setupMock: func(m *mocks.AccountsUsecase) {
-				m.On("TransactionHistory",
-					mock.Anything,
-					validAccountID,
-					10,
-					0,
-				).Return(0, nil, errors.New("аккаунт не найден")).Once()
 			},
 			expectedStatusCode: http.StatusInternalServerError,
 			expectError:        true,
@@ -305,13 +306,15 @@ func TestAccountTransactionsHandler(t *testing.T) {
 			mockAccountUsecase := mocks.NewAccountsUsecase(t)
 			mockTransactionUsecase := mocks.NewTransactionUsecase(t)
 			mockAuthUsecase := mocks.NewAuthUseCase(t)
-			handler := NewHandler(mockTransactionUsecase, mockAccountUsecase, mockAuthUsecase, serlog)
+			handler := NewHandler(mockTransactionUsecase, mockAccountUsecase, mockAuthUsecase, nil)
 
 			tt.setupMock(mockAccountUsecase)
 
-			url := "/accounts/" + tt.accountID + "/transactions?id=" + tt.accountID + "&limit=" + tt.limit + "&offset=" + tt.offset
+			url := "/accounts/" + tt.accountID + "/transactions?limit=" + tt.limit + "&offset=" + tt.offset
 			req := httptest.NewRequest(http.MethodGet, url, nil)
-			req = req.WithContext(context.Background())
+			req.SetPathValue("id", tt.accountID)
+			ctx := context.WithValue(context.Background(), "user_id", testUserID.String())
+			req = req.WithContext(ctx)
 
 			rr := httptest.NewRecorder()
 			handler.AccountTransactions(rr, req)
@@ -324,7 +327,7 @@ func TestAccountTransactionsHandler(t *testing.T) {
 				err := json.Unmarshal(rr.Body.Bytes(), &response)
 				require.NoError(t, err, "ответ должен быть валидным JSON")
 				assert.Equal(t, tt.expectedTotal, response.Total, "неожиданное количество страниц")
-				assert.Equal(t, tt.expectedCount, len(response.Slice), "неожиданное количество транзакций")
+				assert.Equal(t, tt.expectedCount, len(response.Transactions), "неожиданное количество транзакций")
 			} else {
 				assert.NotEmpty(t, rr.Body.String(), "ожидался response body с ошибкой")
 			}

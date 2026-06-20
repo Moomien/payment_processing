@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 
 	"github.com/joho/godotenv"
 )
@@ -24,10 +25,13 @@ type PostgresConfig struct {
 }
 
 type RedisConfig struct {
-	HOST     string
-	PORT     string
-	USER     string
-	PASSWORD string
+	HOST          string
+	PORT          string
+	USER          string
+	PASSWORD      string
+	RateLimitMin  int64
+	RateLimitHour int64
+	RateLimitDay  int64
 }
 
 func Load() (*Config, error) {
@@ -50,10 +54,13 @@ func Load() (*Config, error) {
 	}
 
 	cfg.Redis = RedisConfig{
-		HOST:     getEnv("REDIS_HOST", "localhost"),
-		PORT:     getEnv("REDIS_PORT", "6379"),
-		USER:     getEnv("REDIS_USER", ""),
-		PASSWORD: getEnv("REDIS_PASSWORD", ""),
+		HOST:          getEnv("REDIS_HOST", "localhost"),
+		PORT:          getEnv("REDIS_PORT", "6379"),
+		USER:          getEnv("REDIS_USER", ""),
+		PASSWORD:      getEnv("REDIS_PASSWORD", ""),
+		RateLimitMin:  getEnvAsInt("REDIS_RATE_LIMIT_MIN", 20),
+		RateLimitHour: getEnvAsInt("REDIS_RATE_LIMIT_HOUR", 100),
+		RateLimitDay:  getEnvAsInt("REDIS_RATE_LIMIT_DAY", 500),
 	}
 	return cfg, nil
 }
@@ -67,7 +74,7 @@ func (c *PostgresConfig) PostgresDSN() string {
 
 func (c *RedisConfig) RedisDSN() string {
 	return fmt.Sprintf(
-		"redis://%s:%s@%s:%s",
+		"%s:%s@%s:%s",
 		c.USER, c.PASSWORD, c.HOST, c.PORT,
 	)
 }
@@ -75,6 +82,15 @@ func (c *RedisConfig) RedisDSN() string {
 func getEnv(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
+	}
+	return defaultValue
+}
+
+func getEnvAsInt(key string, defaultValue int64) int64 {
+	if value := os.Getenv(key); value != "" {
+		if i, err := strconv.ParseInt(value, 10, 64); err == nil {
+			return i
+		}
 	}
 	return defaultValue
 }

@@ -81,7 +81,7 @@ func ValidateAccessToken(tokenString string) (*domain.AccessClaims, error) {
 			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, fmt.Errorf("неверный алгоритм: %v", t.Header["alg"])
 			}
-			return accessSecretKey, nil
+			return []byte(accessSecretKey), nil
 		},
 	)
 	if err != nil {
@@ -111,7 +111,7 @@ func ValidateRefreshToken(tokenString string) (*domain.RefreshClaims, error) {
 			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, fmt.Errorf("невалидный алгоритм: %v", t.Header["alg"])
 			}
-			return refreshSecretKey, nil
+			return []byte(refreshSecretKey), nil
 		},
 	)
 	if err != nil {

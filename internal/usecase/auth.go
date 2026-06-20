@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"processing/internal/decimal"
 	jwtLayer "processing/internal/delivery/http/jwt"
 	"processing/internal/domain"
 	"processing/internal/infrastructure/logger"
@@ -36,8 +37,9 @@ func (as *AuthService) Register(ctx context.Context, email, password, name strin
 		return nil, err
 	}
 
-	if err := as.cache.IdempotencyCheck(ctx, ip, time.Minute); err != nil {
-		as.log.WarnContext(ctx, "повторный запрос на регистрацию", "ip", ip)
+	idempotencyKey := ip + ":" + email
+	if err := as.cache.IdempotencyCheck(ctx, idempotencyKey, time.Minute); err != nil {
+		as.log.WarnContext(ctx, "повторный запрос на регистрацию", "ip", ip, "email", email)
 		return nil, err
 	}
 
@@ -59,6 +61,8 @@ func (as *AuthService) Register(ctx context.Context, email, password, name strin
 		Email:        email,
 		Name:         name,
 		PasswordHash: string(passwordHash),
+		Balance:      decimal.Zero(),
+		Role:         "user",
 	}
 
 	if err := uow.Accounts().Create(ctx, account); err != nil {
@@ -204,7 +208,6 @@ func (as *AuthService) Refresh(ctx context.Context, refreshToken string, ip stri
 func (as *AuthService) Logout(ctx context.Context, refreshToken string, ip string) error {
 	if err := as.cache.CheckRateLimit(ctx, ip); err != nil {
 		as.log.WarnContext(ctx, "превышен лимит запросов при logout", "ip", ip)
-		return err
 	}
 
 	claims, err := jwtLayer.ValidateRefreshToken(refreshToken)

@@ -1,9 +1,12 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"processing/internal/domain"
 	"strconv"
+
+	"github.com/google/uuid"
 )
 
 type AccountDTO struct {
@@ -17,13 +20,25 @@ type AccountDTO struct {
 func (h *handler) GetAccount(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	ctx := r.Context()
-	id, err := parseUUID(r.URL.Query(), "id")
+
+	accountIDStr := r.PathValue("id")
+	accountID, err := uuid.Parse(accountIDStr)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err, 0)
+		writeError(w, http.StatusBadRequest, err, 0)
 		return
 	}
 
-	account, err := h.as.GetAccount(ctx, id)
+	ctxUserID, ok := ctx.Value("user_id").(string)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, errors.New("user_id не найден в контексте"), 0)
+		return
+	}
+	if ctxUserID != accountID.String() {
+		writeError(w, http.StatusForbidden, domain.ErrAccessDenied, 0)
+		return
+	}
+
+	account, err := h.as.GetAccount(ctx, accountID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err, 1)
 		return
@@ -35,17 +50,29 @@ func (h *handler) GetAccount(w http.ResponseWriter, r *http.Request) {
 }
 
 type AccountTransactions struct {
-	Slice []domain.Transaction `json:"transactions"`
-	Total int                  `json:"pages"`
+	Transactions []domain.Transaction `json:"transactions"`
+	Total        int                  `json:"total"`
 }
 
 // Get /accounts/:id/transactions?limit=..&offset=...
 func (h *handler) AccountTransactions(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	ctx := r.Context()
-	id, err := parseUUID(r.URL.Query(), "id")
+
+	accountIDStr := r.PathValue("id")
+	accountID, err := uuid.Parse(accountIDStr)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err, 0)
+		writeError(w, http.StatusBadRequest, err, 0)
+		return
+	}
+
+	ctxUserID, ok := ctx.Value("user_id").(string)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, errors.New("user_id не найден в контексте"), 0)
+		return
+	}
+	if ctxUserID != accountID.String() {
+		writeError(w, http.StatusForbidden, domain.ErrAccessDenied, 0)
 		return
 	}
 
@@ -53,27 +80,22 @@ func (h *handler) AccountTransactions(w http.ResponseWriter, r *http.Request) {
 	offset := r.URL.Query().Get("offset")
 	l, err := strconv.Atoi(limit)
 	if err != nil {
-		h.log.Error("strconv ", "err", err)
-		writeError(w, http.StatusBadRequest, err, 0)
-		return
+		l = 10
 	}
-
 	o, err := strconv.Atoi(offset)
 	if err != nil {
-		h.log.Error("strconv ", "err", err)
-		writeError(w, http.StatusInternalServerError, err, 0)
-		return
+		o = 0
 	}
 
-	total, transactions, err := h.as.TransactionHistory(ctx, id, l, o)
+	total, transactions, err := h.as.TransactionHistory(ctx, accountID, l, o)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err, 0)
 		return
 	}
 
 	dto := AccountTransactions{
-		Slice: transactions,
-		Total: total,
+		Transactions: transactions,
+		Total:        total,
 	}
 
 	if err := writeJSON(w, http.StatusOK, dto); err != nil {

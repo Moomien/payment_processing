@@ -9,8 +9,8 @@ import (
 )
 
 type Account struct {
-	ID           uuid.UUID       `json:"account_id"`
-	Name         string          `json:"name"`
+	ID           uuid.UUID       `json:"id"`
+	Name         string          `json:"username"`
 	Email        string          `json:"email"`
 	Balance      decimal.Decimal `json:"balance"`
 	PasswordHash string          `json:"-"`
