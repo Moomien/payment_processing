@@ -10,12 +10,13 @@ jobs:
         run: go mod download
       - name: Lint
         run: go vet ./...
-    test:
-      runs-on: ubuntu latest
-      steps:
-        - name: Checkout
-          uses: actions/checkout@v7
-        - name: install deps
-          run: go mod download
-        - name: test
-          run: go tool cover -func=coverage | grep total
+  test:
+    needs: [golangci-lint]
+    runs-on: ubuntu latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: install deps
+        run: go mod download
+      - name: test
+        run: go tool cover -func=coverage | grep total
