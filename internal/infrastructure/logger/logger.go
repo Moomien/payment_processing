@@ -29,5 +29,8 @@ func NewLogger(loglevel string, env string) (*slog.Logger, error) {
 }
 
 func WithService(logger *slog.Logger, service string) *slog.Logger {
+	if logger == nil {
+		return slog.Default().With("service", service)
+	}
 	return logger.With("service", service)
 }
