@@ -50,6 +50,8 @@ type Redis struct {
 
 type NewRedisOptions struct {
 	Addr          string
+	Username      string
+	Password      string
 	RateLimitMin  int64
 	RateLimitHour int64
 	RateLimitDay  int64
@@ -57,7 +59,9 @@ type NewRedisOptions struct {
 
 func NewRedis(opts NewRedisOptions) *Redis {
 	c := redis.NewClient(&redis.Options{
-		Addr: opts.Addr,
+		Addr:     opts.Addr,
+		Username: opts.Username,
+		Password: opts.Password,
 	})
 	return &Redis{
 		client:        c,

@@ -1,7 +1,9 @@
 package config
 
 import (
+	"errors"
 	"fmt"
+	"net"
 	"os"
 	"strconv"
 
@@ -35,7 +37,7 @@ type RedisConfig struct {
 }
 
 func Load() (*Config, error) {
-	if err := godotenv.Load(); err != nil {
+	if err := godotenv.Load(); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, err
 	}
 
@@ -73,10 +75,7 @@ func (c *PostgresConfig) PostgresDSN() string {
 }
 
 func (c *RedisConfig) RedisDSN() string {
-	return fmt.Sprintf(
-		"%s:%s@%s:%s",
-		c.USER, c.PASSWORD, c.HOST, c.PORT,
-	)
+	return net.JoinHostPort(c.HOST, c.PORT)
 }
 
 func getEnv(key, defaultValue string) string {

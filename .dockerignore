@@ -1,0 +1,16 @@
+.git
+.github
+.agents
+.codex
+
+**/.env
+**/.env.*
+!**/.env.example
+
+coverage.out
+*.log
+*.tmp
+
+tasks.md
+README.md
+e2e

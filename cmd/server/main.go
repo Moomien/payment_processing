@@ -50,6 +50,8 @@ func run() error {
 	redis_url := cfg.Redis.RedisDSN()
 	cache := cache.NewRedis(cache.NewRedisOptions{
 		Addr:          redis_url,
+		Username:      cfg.Redis.USER,
+		Password:      cfg.Redis.PASSWORD,
 		RateLimitMin:  cfg.Redis.RateLimitMin,
 		RateLimitHour: cfg.Redis.RateLimitHour,
 		RateLimitDay:  cfg.Redis.RateLimitDay,
@@ -67,6 +69,7 @@ func run() error {
 
 	router := http.NewServeMux()
 
+	router.HandleFunc("GET /health", handlers.Health)
 	router.HandleFunc("POST /auth/register", handler.Register)
 	router.HandleFunc("POST /auth/login", handler.Login)
 	router.HandleFunc("POST /auth/refresh", handler.Refresh)
