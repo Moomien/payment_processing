@@ -35,6 +35,7 @@ type JWTConfig struct {
 	RefreshSecret string
 	AccessTTL     time.Duration // короткий TTL
 	RefreshTTL    time.Duration // длинный TTL
+	Issuer        string
 }
 
 type PostgresConfig struct {
@@ -97,6 +98,14 @@ func Load() (*Config, error) {
 		USER:     getEnv("REDIS_USER", ""),
 		PASSWORD: getEnv("REDIS_PASSWORD", ""),
 		DB:       int(getEnvAsInt("REDIS_DB", 0)),
+	}
+
+	cfg.JWT = JWTConfig{
+		AccessSecret:  getEnv("ACCESS_TOKEN_SECRET", ""),
+		RefreshSecret: getEnv("REFRESH_TOKEN_SECRET", ""),
+		AccessTTL:     getEnvAsDuration("ACCESS_TOKEN_TTL", 15*time.Minute),
+		RefreshTTL:    getEnvAsDuration("REFRESH_TOKEN_TTL", 720*time.Hour),
+		Issuer:        getEnv("ISSUER", "my-app"),
 	}
 
 	cfg.Ratelimit = RateLimitConfig{

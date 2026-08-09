@@ -3,130 +3,124 @@ package jwtLayer
 import (
 	"errors"
 	"fmt"
-	"os"
 	"processing/internal/domain"
+	"processing/internal/infrastructure/config"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )
 
-const (
-	AccessTokenDuration  = 15 * time.Minute
-	RefreshTokenDuration = 7 * 24 * time.Hour
+var (
+	ErrTokenExpired = errors.New("токен истёк")
+	ErrTokenInvalid = errors.New("токен невалиден")
 )
 
-func GenerateTokenPair(userID string, role string) (*domain.TokenPair, error) {
-	accessSecretKey := os.Getenv("accessSecretKey")
-	refreshSecretKey := os.Getenv("refreshSecretKey")
+type Manager struct {
+	accessSecret  []byte
+	refreshSecret []byte
+	accessTTL     time.Duration
+	refreshTTL    time.Duration
+	issuer        string
+}
 
-	if accessSecretKey == "" || refreshSecretKey == "" {
-		return nil, errors.New("секретные ключи не установлены в переменных окружения")
+func NewManager(cfg config.JWTConfig) *Manager {
+	return &Manager{
+		accessSecret:  []byte(cfg.AccessSecret),
+		refreshSecret: []byte(cfg.RefreshSecret),
+		accessTTL:     cfg.AccessTTL,
+		refreshTTL:    cfg.RefreshTTL,
+		issuer:        cfg.Issuer,
 	}
+}
 
+func (m *Manager) GenerateTokenPair(userID string, role string) (*domain.TokenPair, error) {
 	now := time.Now()
-	accessExpiresAt := now.Add(AccessTokenDuration)
-	refreshExpiresAt := now.Add(RefreshTokenDuration)
+	accessExpiresAt := now.Add(m.accessTTL)
+	refreshExpiresAt := now.Add(m.refreshTTL)
 
 	accessClaims := domain.AccessClaims{
 		UserID: userID,
 		Role:   role,
 		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   userID,
 			ExpiresAt: jwt.NewNumericDate(accessExpiresAt),
 			IssuedAt:  jwt.NewNumericDate(now),
-			Issuer:    "my-app",
+			Issuer:    m.issuer,
 		},
 	}
 	accessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, accessClaims)
-	accessSigned, err := accessToken.SignedString([]byte(accessSecretKey))
+	accessSigned, err := accessToken.SignedString(m.accessSecret)
 	if err != nil {
-		return nil, fmt.Errorf("ошибка создания access token: %w", err)
+		return nil, fmt.Errorf("подпись access token: %w", err)
 	}
 
 	jti, err := uuid.NewRandom()
 	if err != nil {
-		return nil, fmt.Errorf("ошибка генерации JTI: %w", err)
+		return nil, fmt.Errorf("генерации JTI: %w", err)
 	}
 
 	refreshClaims := domain.RefreshClaims{
 		UserID: userID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ID:        jti.String(),
+			Subject:   userID,
 			ExpiresAt: jwt.NewNumericDate(refreshExpiresAt),
 			IssuedAt:  jwt.NewNumericDate(now),
-			Issuer:    "my-app",
+			Issuer:    m.issuer,
 		},
 	}
 	refreshToken := jwt.NewWithClaims(jwt.SigningMethodHS256, refreshClaims)
-	refreshSigned, err := refreshToken.SignedString([]byte(refreshSecretKey))
+	refreshSigned, err := refreshToken.SignedString(m.refreshSecret)
 	if err != nil {
-		return nil, fmt.Errorf("ошибка создания refresh token: %w", err)
+		return nil, fmt.Errorf("подпись refresh token: %w", err)
 	}
 
 	return &domain.TokenPair{
 		AccessToken:  accessSigned,
 		RefreshToken: refreshSigned,
-		ExpiresIn:    int64(AccessTokenDuration.Seconds()),
+		ExpiresIn:    int64(m.accessTTL.Seconds()),
 		JTI:          jti.String(),
 		ExpiresAt:    refreshExpiresAt,
 	}, nil
 }
 
-func ValidateAccessToken(tokenString string) (*domain.AccessClaims, error) {
-	accessSecretKey := os.Getenv("accessSecretKey")
-
-	token, err := jwt.ParseWithClaims(
-		tokenString, &domain.AccessClaims{},
-		func(t *jwt.Token) (interface{}, error) {
-			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, fmt.Errorf("неверный алгоритм: %v", t.Header["alg"])
-			}
-			return []byte(accessSecretKey), nil
-		},
-	)
-	if err != nil {
-		if errors.Is(err, jwt.ErrTokenExpired) {
-			return nil, errors.New("истекший токен")
-		} else if errors.Is(err, jwt.ErrTokenSignatureInvalid) {
-			return nil, errors.New("подпись неверна")
-		}
-		return nil, fmt.Errorf("парсинг jwt токена: %w", err)
-	}
-
-	claims, ok := token.Claims.(*domain.AccessClaims)
-	if !ok {
-		return nil, errors.New("невалидные claims")
+func (m *Manager) ValidateAccessToken(tokenString string) (*domain.AccessClaims, error) {
+	claims := &domain.AccessClaims{}
+	if err := m.parse(tokenString, claims, m.accessSecret); err != nil {
+		return nil, err
 	}
 
 	return claims, nil
 }
 
-func ValidateRefreshToken(tokenString string) (*domain.RefreshClaims, error) {
-	refreshSecretKey := os.Getenv("refreshSecretKey")
-
-	token, err := jwt.ParseWithClaims(
-		tokenString,
-		&domain.RefreshClaims{},
-		func(t *jwt.Token) (interface{}, error) {
-			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, fmt.Errorf("невалидный алгоритм: %v", t.Header["alg"])
-			}
-			return []byte(refreshSecretKey), nil
-		},
-	)
-	if err != nil {
-		if errors.Is(err, jwt.ErrTokenExpired) {
-			return nil, errors.New("истекший токен")
-		} else if errors.Is(err, jwt.ErrTokenSignatureInvalid) {
-			return nil, errors.New("подпись неверна")
-		}
-		return nil, fmt.Errorf("парсинг jwt токена: %w", err)
+func (m *Manager) ValidateRefreshToken(tokenString string) (*domain.RefreshClaims, error) {
+	claims := &domain.RefreshClaims{}
+	if err := m.parse(tokenString, claims, m.refreshSecret); err != nil {
+		return nil, err
 	}
-
-	claims, ok := token.Claims.(*domain.RefreshClaims)
-	if !ok {
-		return nil, errors.New("невалидные claims")
+	if claims.ID == "" {
+		return nil, fmt.Errorf("%w: отсутствует jti", ErrTokenInvalid)
 	}
-
 	return claims, nil
+}
+
+func (m *Manager) parse(tokenString string, claims jwt.Claims, secret []byte) error {
+	token, err := jwt.ParseWithClaims(
+		tokenString, claims,
+		func(t *jwt.Token) (interface{}, error) {
+			return secret, nil
+		},
+		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
+		jwt.WithIssuer(m.issuer),
+	)
+	switch {
+	case errors.Is(err, jwt.ErrTokenExpired):
+		return ErrTokenExpired
+	case err != nil:
+		return fmt.Errorf("%w: %v", ErrTokenInvalid, err)
+	case !token.Valid:
+		return ErrTokenInvalid
+	}
+	return nil
 }

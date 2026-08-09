@@ -8,6 +8,10 @@ import (
 	"github.com/google/uuid"
 )
 
+var (
+	RoleUser = "user"
+)
+
 type Account struct {
 	ID           uuid.UUID       `json:"id"`
 	Name         string          `json:"username"`

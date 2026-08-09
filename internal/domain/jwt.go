@@ -16,14 +16,12 @@ type AuthUseCase interface {
 	LogoutAll(ctx context.Context, userID uuid.UUID) error
 }
 
-// RefreshSession представляет сессию refresh токена в БД
 type RefreshSession struct {
 	UserID    uuid.UUID
 	Revoked   bool
 	ExpiresAt time.Time
 }
 
-// TokenPair пара токенов для клиента
 type TokenPair struct {
 	AccessToken  string    `json:"access_token"`
 	RefreshToken string    `json:"refresh_token"`

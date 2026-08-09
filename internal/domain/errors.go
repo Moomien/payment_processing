@@ -8,7 +8,6 @@ var (
 	ErrInvalidAmount           = errors.New("сумма должна быть положительной")
 	ErrSameAccount             = errors.New("отправитель и получатель должны быть разными")
 	ErrReceiverAccountNotFound = errors.New("receiver аккаунт не найден")
-	ErrAccountAlreadyExist     = errors.New("аккаунт уже существует")
 )
 
 var (
@@ -19,4 +18,12 @@ var (
 	ErrRefreshTokenExpired  = errors.New("refresh токен истек")
 	ErrInvalidCredentials   = errors.New("неверные учетные данные")
 	ErrInvalidRefreshToken  = errors.New("невалидный refresh токен")
+)
+
+var (
+	ErrAccountAlreadyExist = errors.New("аккаунт с таким email уже существует")
+	ErrAccountBlocked      = errors.New("аккаунт заблокирован")
+	ErrRateLimited         = errors.New("превышен лимит запросов")
+	ErrDuplicateRequest    = errors.New("повторный запрос")
+	ErrRefreshTokenReuse   = errors.New("повторное использование refresh токена")
 )

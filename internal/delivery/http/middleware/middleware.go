@@ -2,56 +2,72 @@ package middleware
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	jwtLayer "processing/internal/delivery/http/jwt"
-	"processing/internal/domain"
 	"strings"
 )
 
-func AuthMiddleware(next http.Handler) http.Handler {
+type ctxKey int
+
+const (
+	ctxUserID ctxKey = iota
+	ctxRole
+)
+
+type Auth struct {
+	jwt *jwtLayer.Manager
+}
+
+func NewAuth(jwt *jwtLayer.Manager) Auth {
+	return Auth{jwt: jwt}
+}
+
+func (a Auth) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		claims, err := validateToken(r)
+		token, err := bearerToken(r)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusUnauthorized)
+			unauthorized(w, "требуется авторизация")
 			return
 		}
 
-		ctx := context.WithValue(r.Context(), "user_id", claims.UserID)
-		ctx = context.WithValue(ctx, "role", claims.Role)
+		claims, err := a.jwt.ValidateAccessToken(token)
+		if err != nil {
+			if errors.Is(err, jwtLayer.ErrTokenExpired) {
+				unauthorized(w, "токен истёк")
+				return
+			}
+			unauthorized(w, "невалидный токен")
+			return
+		}
+
+		ctx := context.WithValue(r.Context(), ctxUserID, claims.UserID)
+		ctx = context.WithValue(ctx, ctxRole, claims.Role)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
-func validateToken(r *http.Request) (*domain.AccessClaims, error) {
-	var token string
-	authHeader := r.Header.Get("Authorization")
-	if authHeader != "" {
-		if !strings.HasPrefix(authHeader, "Bearer ") {
-			return nil, errors.New("неверный формат authorization header")
-		}
-		token = strings.TrimPrefix(authHeader, "Bearer ")
-	} else {
-		cookie, err := r.Cookie("access_token")
-		if err != nil {
-			return nil, errors.New("токен отсутствует")
-		}
-		token = cookie.Value
+func bearerToken(r *http.Request) (string, error) {
+	header := r.Header.Get("Authorization")
+	scheme, token, found := strings.Cut(header, " ")
+	if !found {
+		return "", errors.New("заголовок Authorization отсутствует или кэш пуст")
+	}
+
+	if !strings.EqualFold(scheme, "Bearer") {
+		return "", errors.New("ожидается схема Bearer")
 	}
 
 	if token == "" {
-		return nil, errors.New("токен пустой")
+		return "", errors.New("токен пуст")
 	}
+	return token, nil
+}
 
-	claims, err := jwtLayer.ValidateAccessToken(token)
-	if err != nil {
-		return nil, fmt.Errorf("невалидный токен: %w", err)
-	}
-
-	if claims.UserID == "" {
-		return nil, errors.New("user_id отсутствует в токене")
-	}
-
-	return claims, nil
+func unauthorized(w http.ResponseWriter, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("WWW-Authenticate", `Bearer error="invalid_token"`)
+	w.WriteHeader(http.StatusUnauthorized)
+	json.NewEncoder(w).Encode(map[string]string{"error": message})
 }
