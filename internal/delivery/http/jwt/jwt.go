@@ -12,8 +12,8 @@ import (
 )
 
 var (
-	ErrTokenExpired = errors.New("токен истёк")
-	ErrTokenInvalid = errors.New("токен невалиден")
+	ErrTokenExpired = domain.ErrTokenExpired
+	ErrTokenInvalid = domain.ErrTokenInvalid
 )
 
 type Manager struct {
@@ -90,6 +90,9 @@ func (m *Manager) ValidateAccessToken(tokenString string) (*domain.AccessClaims,
 	if err := m.parse(tokenString, claims, m.accessSecret); err != nil {
 		return nil, err
 	}
+	if claims.UserID == "" || claims.Subject != claims.UserID || claims.Role == "" {
+		return nil, ErrTokenInvalid
+	}
 
 	return claims, nil
 }
@@ -99,8 +102,8 @@ func (m *Manager) ValidateRefreshToken(tokenString string) (*domain.RefreshClaim
 	if err := m.parse(tokenString, claims, m.refreshSecret); err != nil {
 		return nil, err
 	}
-	if claims.ID == "" {
-		return nil, fmt.Errorf("%w: отсутствует jti", ErrTokenInvalid)
+	if claims.ID == "" || claims.UserID == "" || claims.Subject != claims.UserID {
+		return nil, ErrTokenInvalid
 	}
 	return claims, nil
 }
@@ -113,6 +116,7 @@ func (m *Manager) parse(tokenString string, claims jwt.Claims, secret []byte) er
 		},
 		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
 		jwt.WithIssuer(m.issuer),
+		jwt.WithExpirationRequired(),
 	)
 	switch {
 	case errors.Is(err, jwt.ErrTokenExpired):

@@ -59,12 +59,12 @@ func run() error {
 	})
 
 	tx := storage.NewUoWFactory(db)
+	jwtManager := jwtLayer.NewManager(cfg.JWT)
 	transactionService := usecase.NewTransactionsService(tx, cache, logger)
 	accountsService := usecase.NewAccountService(tx, cache, logger)
-	authService := usecase.NewAuthService(tx, cache, logger)
+	authService := usecase.NewAuthService(tx, cache, logger, jwtManager)
 
 	handler := handlers.NewHandler(transactionService, accountsService, authService, logger)
-	jwtManager := jwtLayer.NewManager(cfg.JWT)
 	auth := middleware.NewAuth(jwtManager)
 
 	router := http.NewServeMux()

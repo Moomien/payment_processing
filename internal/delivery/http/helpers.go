@@ -3,11 +3,12 @@ package handlers
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"processing/internal/domain"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -116,6 +117,35 @@ func writeError(w http.ResponseWriter, code int, err error, flag int) {
 	json.NewEncoder(w).Encode(map[string]string{"error": status(code)})
 }
 
+func writeAuthError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, domain.ErrRateLimited):
+		writeError(w, http.StatusTooManyRequests, err, 0)
+	case errors.Is(err, domain.ErrAccountAlreadyExist):
+		writeError(w, http.StatusConflict, err, 0)
+	case errors.Is(err, domain.ErrInvalidEmail),
+		errors.Is(err, domain.ErrInvalidPassword),
+		errors.Is(err, domain.ErrInvalidName):
+		writeError(w, http.StatusUnprocessableEntity, err, 0)
+	case errors.Is(err, domain.ErrInvalidCredentials),
+		errors.Is(err, domain.ErrInvalidRefreshToken),
+		errors.Is(err, domain.ErrRefreshTokenExpired),
+		errors.Is(err, domain.ErrRefreshTokenRevoked),
+		errors.Is(err, domain.ErrRefreshTokenReuse):
+		writeError(w, http.StatusUnauthorized, err, 0)
+	default:
+		writeError(w, http.StatusInternalServerError, err, 0)
+	}
+}
+
+func clientIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
+	if err == nil {
+		return host
+	}
+	return strings.Trim(strings.TrimSpace(r.RemoteAddr), "[]")
+}
+
 func writeJSON(w http.ResponseWriter, code int, v any) error {
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(v); err != nil {
@@ -139,79 +169,4 @@ func setAuthCookie(w http.ResponseWriter, path, name, token string, maxage int) 
 		SameSite: http.SameSiteStrictMode,
 		MaxAge:   maxage,
 	})
-}
-
-func validateLogin(w http.ResponseWriter, data *AuthDTO) bool {
-	data.Email = strings.TrimSpace(data.Email)
-
-	if data.Email == "" {
-		http.Error(w, "поле с почтой не может быть пустым", http.StatusUnprocessableEntity)
-		return false
-	}
-
-	if data.Password == "" {
-		http.Error(w, "поле с паролем не может быть пустым", http.StatusUnprocessableEntity)
-		return false
-	}
-
-	regmail := `^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`
-	reg := regexp.MustCompile(regmail)
-	if !reg.MatchString(data.Email) {
-		http.Error(
-			w,
-			"Пожалуйста, введите корректный адрес электронной почты (например, example@mail.com)",
-			http.StatusUnprocessableEntity,
-		)
-		return false
-	}
-
-	if len(data.Password) < 8 {
-		http.Error(w, "длина пароля не может быть меньше 8 символов", http.StatusUnprocessableEntity)
-		return false
-	}
-
-	return true
-}
-
-func validateRegister(w http.ResponseWriter, data *AuthDTO) bool {
-	data.Email = strings.TrimSpace(data.Email)
-	data.Name = strings.TrimSpace(data.Name)
-
-	if data.Name == "" {
-		http.Error(w, "поле с именем не может быть пустым", http.StatusUnprocessableEntity)
-		return false
-	}
-
-	if data.Email == "" {
-		http.Error(w, "поле с почтой не может быть пустым", http.StatusUnprocessableEntity)
-		return false
-	}
-
-	if data.Password == "" {
-		http.Error(w, "поле с паролем не может быть пустым", http.StatusUnprocessableEntity)
-		return false
-	}
-
-	if len(data.Name) < 3 {
-		http.Error(w, "имя не может быть меньше 3 букв", http.StatusUnprocessableEntity)
-		return false
-	}
-
-	regmail := `^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`
-	reg := regexp.MustCompile(regmail)
-	if !reg.MatchString(data.Email) {
-		http.Error(
-			w,
-			"Пожалуйста, введите корректный адрес электронной почты (например, example@mail.com)",
-			http.StatusUnprocessableEntity,
-		)
-		return false
-	}
-
-	if len(data.Password) < 8 {
-		http.Error(w, "длина пароля не может быть меньше 8 символов", http.StatusUnprocessableEntity)
-		return false
-	}
-
-	return true
 }

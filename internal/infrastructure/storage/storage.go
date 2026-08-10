@@ -88,7 +88,7 @@ func (s *accountRepo) GetById(ctx context.Context, id uuid.UUID) (*domain.Accoun
 	err := s.tx.QueryRowContext(ctx, query, id).Scan(&ac.ID, &ac.Name, &ac.Email, &ac.Balance, &ac.PasswordHash, &ac.Role)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("аккаунт не найден или не создан: %w", err)
+			return nil, domain.ErrAccountNotFound
 		}
 		return nil, fmt.Errorf("получение данных аккаунта по id: %w", err)
 	}
@@ -98,11 +98,11 @@ func (s *accountRepo) GetById(ctx context.Context, id uuid.UUID) (*domain.Accoun
 // GetByEmail - возвращает аккаунт по email
 func (s *accountRepo) GetByEmail(ctx context.Context, email string) (*domain.Account, error) {
 	ac := &domain.Account{}
-	query := `SELECT id, name, email, balance, password_hash, role FROM accounts WHERE email = $1`
+	query := `SELECT id, name, email, balance, password_hash, role FROM accounts WHERE LOWER(email) = LOWER($1)`
 	err := s.tx.QueryRowContext(ctx, query, email).Scan(&ac.ID, &ac.Name, &ac.Email, &ac.Balance, &ac.PasswordHash, &ac.Role)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("аккаунт не найден: %w", err)
+			return nil, domain.ErrAccountNotFound
 		}
 		return nil, fmt.Errorf("получение данных аккаунта по email: %w", err)
 	}

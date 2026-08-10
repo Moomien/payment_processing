@@ -104,10 +104,13 @@ func TestRegisterHandler(t *testing.T) {
 				Password: "password123",
 				Name:     "",
 			},
-			setupMock:          func(authMock *mocks.AuthUseCase) {},
+			setupMock: func(authMock *mocks.AuthUseCase) {
+				authMock.On("Register", mock.Anything, "test@example.com", "password123", "", mock.Anything).
+					Return(nil, domain.ErrInvalidName)
+			},
 			expectedStatusCode: http.StatusUnprocessableEntity,
 			checkResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
-				assert.Contains(t, rec.Body.String(), "поле с именем не может быть пустым")
+				assert.Contains(t, rec.Body.String(), "error")
 			},
 		},
 		{
@@ -117,10 +120,13 @@ func TestRegisterHandler(t *testing.T) {
 				Password: "password123",
 				Name:     "ab",
 			},
-			setupMock:          func(authMock *mocks.AuthUseCase) {},
+			setupMock: func(authMock *mocks.AuthUseCase) {
+				authMock.On("Register", mock.Anything, "test@example.com", "password123", "ab", mock.Anything).
+					Return(nil, domain.ErrInvalidName)
+			},
 			expectedStatusCode: http.StatusUnprocessableEntity,
 			checkResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
-				assert.Contains(t, rec.Body.String(), "имя не может быть меньше 3 букв")
+				assert.Contains(t, rec.Body.String(), "error")
 			},
 		},
 		{
@@ -130,10 +136,13 @@ func TestRegisterHandler(t *testing.T) {
 				Password: "password123",
 				Name:     "TestUser",
 			},
-			setupMock:          func(authMock *mocks.AuthUseCase) {},
+			setupMock: func(authMock *mocks.AuthUseCase) {
+				authMock.On("Register", mock.Anything, "", "password123", "TestUser", mock.Anything).
+					Return(nil, domain.ErrInvalidEmail)
+			},
 			expectedStatusCode: http.StatusUnprocessableEntity,
 			checkResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
-				assert.Contains(t, rec.Body.String(), "поле с почтой не может быть пустым")
+				assert.Contains(t, rec.Body.String(), "error")
 			},
 		},
 		{
@@ -143,10 +152,13 @@ func TestRegisterHandler(t *testing.T) {
 				Password: "password123",
 				Name:     "TestUser",
 			},
-			setupMock:          func(authMock *mocks.AuthUseCase) {},
+			setupMock: func(authMock *mocks.AuthUseCase) {
+				authMock.On("Register", mock.Anything, "invalid-email", "password123", "TestUser", mock.Anything).
+					Return(nil, domain.ErrInvalidEmail)
+			},
 			expectedStatusCode: http.StatusUnprocessableEntity,
 			checkResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
-				assert.Contains(t, rec.Body.String(), "введите корректный адрес электронной почты")
+				assert.Contains(t, rec.Body.String(), "error")
 			},
 		},
 		{
@@ -156,10 +168,13 @@ func TestRegisterHandler(t *testing.T) {
 				Password: "",
 				Name:     "TestUser",
 			},
-			setupMock:          func(authMock *mocks.AuthUseCase) {},
+			setupMock: func(authMock *mocks.AuthUseCase) {
+				authMock.On("Register", mock.Anything, "test@example.com", "", "TestUser", mock.Anything).
+					Return(nil, domain.ErrInvalidPassword)
+			},
 			expectedStatusCode: http.StatusUnprocessableEntity,
 			checkResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
-				assert.Contains(t, rec.Body.String(), "поле с паролем не может быть пустым")
+				assert.Contains(t, rec.Body.String(), "error")
 			},
 		},
 		{
@@ -169,10 +184,13 @@ func TestRegisterHandler(t *testing.T) {
 				Password: "pass123",
 				Name:     "TestUser",
 			},
-			setupMock:          func(authMock *mocks.AuthUseCase) {},
+			setupMock: func(authMock *mocks.AuthUseCase) {
+				authMock.On("Register", mock.Anything, "test@example.com", "pass123", "TestUser", mock.Anything).
+					Return(nil, domain.ErrInvalidPassword)
+			},
 			expectedStatusCode: http.StatusUnprocessableEntity,
 			checkResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
-				assert.Contains(t, rec.Body.String(), "длина пароля не может быть меньше 8 символов")
+				assert.Contains(t, rec.Body.String(), "error")
 			},
 		},
 		{
@@ -223,9 +241,9 @@ func TestRegisterHandler(t *testing.T) {
 				Name:     "  TestUser  ",
 			},
 			setupMock: func(authMock *mocks.AuthUseCase) {
-				authMock.On("Register", mock.Anything, "test@example.com", "password123", "TestUser", mock.Anything).
+				authMock.On("Register", mock.Anything, "  test@example.com  ", "password123", "  TestUser  ", mock.Anything).
 					Return(testAccount, nil)
-				authMock.On("Login", mock.Anything, "test@example.com", "password123", mock.Anything).
+				authMock.On("Login", mock.Anything, "  test@example.com  ", "password123", mock.Anything).
 					Return(testTokenPair, nil)
 			},
 			expectedStatusCode: http.StatusCreated,
@@ -347,10 +365,13 @@ func TestLoginHandler(t *testing.T) {
 				Email:    "",
 				Password: "password123",
 			},
-			setupMock:          func(authMock *mocks.AuthUseCase) {},
-			expectedStatusCode: http.StatusUnprocessableEntity,
+			setupMock: func(authMock *mocks.AuthUseCase) {
+				authMock.On("Login", mock.Anything, "", "password123", mock.Anything).
+					Return(nil, domain.ErrInvalidCredentials)
+			},
+			expectedStatusCode: http.StatusUnauthorized,
 			checkResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
-				assert.Contains(t, rec.Body.String(), "поле с почтой не может быть пустым")
+				assert.Contains(t, rec.Body.String(), "error")
 			},
 		},
 		{
@@ -359,10 +380,13 @@ func TestLoginHandler(t *testing.T) {
 				Email:    "invalid-email",
 				Password: "password123",
 			},
-			setupMock:          func(authMock *mocks.AuthUseCase) {},
-			expectedStatusCode: http.StatusUnprocessableEntity,
+			setupMock: func(authMock *mocks.AuthUseCase) {
+				authMock.On("Login", mock.Anything, "invalid-email", "password123", mock.Anything).
+					Return(nil, domain.ErrInvalidCredentials)
+			},
+			expectedStatusCode: http.StatusUnauthorized,
 			checkResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
-				assert.Contains(t, rec.Body.String(), "введите корректный адрес электронной почты")
+				assert.Contains(t, rec.Body.String(), "error")
 			},
 		},
 		{
@@ -371,10 +395,13 @@ func TestLoginHandler(t *testing.T) {
 				Email:    "test@example.com",
 				Password: "",
 			},
-			setupMock:          func(authMock *mocks.AuthUseCase) {},
-			expectedStatusCode: http.StatusUnprocessableEntity,
+			setupMock: func(authMock *mocks.AuthUseCase) {
+				authMock.On("Login", mock.Anything, "test@example.com", "", mock.Anything).
+					Return(nil, domain.ErrInvalidCredentials)
+			},
+			expectedStatusCode: http.StatusUnauthorized,
 			checkResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
-				assert.Contains(t, rec.Body.String(), "поле с паролем не может быть пустым")
+				assert.Contains(t, rec.Body.String(), "error")
 			},
 		},
 		{
@@ -383,10 +410,13 @@ func TestLoginHandler(t *testing.T) {
 				Email:    "test@example.com",
 				Password: "pass123",
 			},
-			setupMock:          func(authMock *mocks.AuthUseCase) {},
-			expectedStatusCode: http.StatusUnprocessableEntity,
+			setupMock: func(authMock *mocks.AuthUseCase) {
+				authMock.On("Login", mock.Anything, "test@example.com", "pass123", mock.Anything).
+					Return(nil, domain.ErrInvalidCredentials)
+			},
+			expectedStatusCode: http.StatusUnauthorized,
 			checkResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
-				assert.Contains(t, rec.Body.String(), "длина пароля не может быть меньше 8 символов")
+				assert.Contains(t, rec.Body.String(), "error")
 			},
 		},
 		{
@@ -405,7 +435,7 @@ func TestLoginHandler(t *testing.T) {
 				err := json.NewDecoder(rec.Body).Decode(&response)
 				assert.NoError(t, err)
 				assert.Contains(t, response, "error")
-				assert.Contains(t, response, "message")
+				assert.NotContains(t, response, "message")
 			},
 		},
 		{
@@ -415,7 +445,7 @@ func TestLoginHandler(t *testing.T) {
 				Password: "  password123  ",
 			},
 			setupMock: func(authMock *mocks.AuthUseCase) {
-				authMock.On("Login", mock.Anything, "test@example.com", "  password123  ", mock.Anything).
+				authMock.On("Login", mock.Anything, "  test@example.com  ", "  password123  ", mock.Anything).
 					Return(testTokenPair, nil)
 			},
 			expectedStatusCode: http.StatusOK,
@@ -433,10 +463,13 @@ func TestLoginHandler(t *testing.T) {
 				Email:    "   ",
 				Password: "password123",
 			},
-			setupMock:          func(authMock *mocks.AuthUseCase) {},
-			expectedStatusCode: http.StatusUnprocessableEntity,
+			setupMock: func(authMock *mocks.AuthUseCase) {
+				authMock.On("Login", mock.Anything, "   ", "password123", mock.Anything).
+					Return(nil, domain.ErrInvalidCredentials)
+			},
+			expectedStatusCode: http.StatusUnauthorized,
 			checkResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
-				assert.Contains(t, rec.Body.String(), "поле с почтой не может быть пустым")
+				assert.Contains(t, rec.Body.String(), "error")
 			},
 		},
 		{

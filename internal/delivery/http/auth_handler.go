@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"processing/internal/domain"
 
 	"github.com/google/uuid"
 )
@@ -18,7 +17,7 @@ type AuthDTO struct {
 func (h *handler) Register(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	ctx := r.Context()
-	ip := r.RemoteAddr
+	ip := clientIP(r)
 
 	var dto AuthDTO
 	if err := json.NewDecoder(r.Body).Decode(&dto); err != nil {
@@ -26,23 +25,15 @@ func (h *handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !validateRegister(w, &dto) {
-		return
-	}
-
 	account, err := h.auth.Register(ctx, dto.Email, dto.Password, dto.Name, ip)
 	if err != nil {
-		if errors.Is(err, domain.ErrAccountAlreadyExist) {
-			writeError(w, http.StatusConflict, err, 0)
-			return
-		}
-		writeError(w, http.StatusInternalServerError, err, 0)
+		writeAuthError(w, err)
 		return
 	}
 
 	token, err := h.auth.Login(ctx, dto.Email, dto.Password, ip)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err, 0)
+		writeAuthError(w, err)
 		return
 	}
 
@@ -59,7 +50,7 @@ func (h *handler) Register(w http.ResponseWriter, r *http.Request) {
 func (h *handler) Login(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	ctx := r.Context()
-	ip := r.RemoteAddr
+	ip := clientIP(r)
 
 	var dto AuthDTO
 	if err := json.NewDecoder(r.Body).Decode(&dto); err != nil {
@@ -67,17 +58,9 @@ func (h *handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !validateLogin(w, &dto) {
-		return
-	}
-
 	token, err := h.auth.Login(ctx, dto.Email, dto.Password, ip)
 	if err != nil {
-		if errors.Is(err, domain.ErrInvalidCredentials) {
-			writeError(w, http.StatusUnauthorized, err, 0)
-			return
-		}
-		writeError(w, http.StatusInternalServerError, err, 1)
+		writeAuthError(w, err)
 		return
 	}
 
@@ -103,7 +86,7 @@ func (h *handler) Refresh(w http.ResponseWriter, r *http.Request) {
 			refreshToken = req.RefreshToken
 		}
 	}
-	ip := r.RemoteAddr
+	ip := clientIP(r)
 	if refreshToken == "" {
 		writeError(w, http.StatusBadRequest, errors.New("refresh token отсутствует"), 1)
 		return
@@ -111,7 +94,7 @@ func (h *handler) Refresh(w http.ResponseWriter, r *http.Request) {
 
 	token, err := h.auth.Refresh(ctx, refreshToken, ip)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err, 0)
+		writeAuthError(w, err)
 		return
 	}
 
@@ -139,14 +122,15 @@ func (h *handler) Logout(w http.ResponseWriter, r *http.Request) {
 		}
 		refreshToken = req.RefreshToken
 	}
-	ip := r.RemoteAddr
+	ip := clientIP(r)
 	if refreshToken == "" {
 		writeError(w, http.StatusBadRequest, errors.New("refresh token отсутствует"), 0)
 		return
 	}
 
 	if err := h.auth.Logout(ctx, refreshToken, ip); err != nil {
-		writeError(w, http.StatusInternalServerError, err, 0)
+		writeAuthError(w, err)
+		return
 	}
 	setAuthCookie(w, "/api", "access_token", "", -1)
 	setAuthCookie(w, "/auth/refresh", "refresh_token", "", -1)
@@ -172,7 +156,8 @@ func (h *handler) LogoutAll(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.auth.LogoutAll(ctx, userID); err != nil {
-		writeError(w, http.StatusInternalServerError, err, 0)
+		writeAuthError(w, err)
+		return
 	}
 	setAuthCookie(w, "/api", "access_token", "", -1)
 	setAuthCookie(w, "/auth/refresh", "refresh_token", "", -1)

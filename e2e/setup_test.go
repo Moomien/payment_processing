@@ -14,8 +14,10 @@ import (
 	"time"
 
 	handlers "processing/internal/delivery/http"
+	jwtLayer "processing/internal/delivery/http/jwt"
 	"processing/internal/delivery/http/middleware"
 	"processing/internal/infrastructure/cache"
+	"processing/internal/infrastructure/config"
 	"processing/internal/infrastructure/logger"
 	"processing/internal/infrastructure/storage"
 	"processing/internal/usecase"
@@ -101,9 +103,16 @@ func SetupTestServer(t *testing.T) *TestServer {
 	}
 
 	tx := storage.NewUoWFactory(db)
+	jwtManager := jwtLayer.NewManager(config.JWTConfig{
+		AccessSecret:  "test-access-secret-key-for-testing-only",
+		RefreshSecret: "test-refresh-secret-key-for-testing-only",
+		AccessTTL:     15 * time.Minute,
+		RefreshTTL:    24 * time.Hour,
+		Issuer:        "processing-e2e",
+	})
 	transactionService := usecase.NewTransactionsService(tx, testCache, testLogger)
 	accountsService := usecase.NewAccountService(tx, testCache, testLogger)
-	authService := usecase.NewAuthService(tx, testCache, testLogger)
+	authService := usecase.NewAuthService(tx, testCache, testLogger, jwtManager)
 
 	handler := handlers.NewHandler(transactionService, accountsService, authService, testLogger)
 
@@ -113,12 +122,13 @@ func SetupTestServer(t *testing.T) *TestServer {
 	router.HandleFunc("POST /auth/login", handler.Login)
 	router.HandleFunc("POST /auth/refresh", handler.Refresh)
 
-	router.Handle("POST /auth/logout", middleware.AuthMiddleware(http.HandlerFunc(handler.Logout)))
-	router.Handle("POST /auth/logout-all", middleware.AuthMiddleware(http.HandlerFunc(handler.LogoutAll)))
-	router.Handle("GET /accounts/{id}", middleware.AuthMiddleware(http.HandlerFunc(handler.GetAccount)))
-	router.Handle("GET /accounts/{id}/transactions", middleware.AuthMiddleware(http.HandlerFunc(handler.AccountTransactions)))
-	router.Handle("POST /transactions", middleware.AuthMiddleware(http.HandlerFunc(handler.Transfer)))
-	router.Handle("GET /transactions/{id}", middleware.AuthMiddleware(http.HandlerFunc(handler.GetTransaction)))
+	auth := middleware.NewAuth(jwtManager)
+	router.Handle("POST /auth/logout", auth.Middleware(http.HandlerFunc(handler.Logout)))
+	router.Handle("POST /auth/logout-all", auth.Middleware(http.HandlerFunc(handler.LogoutAll)))
+	router.Handle("GET /accounts/{id}", auth.Middleware(http.HandlerFunc(handler.GetAccount)))
+	router.Handle("GET /accounts/{id}/transactions", auth.Middleware(http.HandlerFunc(handler.AccountTransactions)))
+	router.Handle("POST /transactions", auth.Middleware(http.HandlerFunc(handler.Transfer)))
+	router.Handle("GET /transactions/{id}", auth.Middleware(http.HandlerFunc(handler.GetTransaction)))
 
 	server := httptest.NewServer(router)
 

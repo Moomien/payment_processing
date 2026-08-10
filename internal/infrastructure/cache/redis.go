@@ -2,16 +2,16 @@ package cache
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"processing/internal/domain"
 	"time"
 
 	"github.com/redis/go-redis/v9"
 )
 
 var (
-	ErrRateLimitExceed = errors.New("превышен лимит запросов")
-	ErrDupRequest      = errors.New("запрос дубликат")
+	ErrRateLimitExceed = domain.ErrRateLimited
+	ErrDupRequest      = domain.ErrDuplicateRequest
 )
 
 // Lua скрипт для sliding window rate limiting

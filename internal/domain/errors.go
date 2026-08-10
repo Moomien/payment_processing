@@ -8,6 +8,7 @@ var (
 	ErrInvalidAmount           = errors.New("сумма должна быть положительной")
 	ErrSameAccount             = errors.New("отправитель и получатель должны быть разными")
 	ErrReceiverAccountNotFound = errors.New("receiver аккаунт не найден")
+	ErrAccountNotFound         = errors.New("аккаунт не найден")
 )
 
 var (
@@ -18,6 +19,8 @@ var (
 	ErrRefreshTokenExpired  = errors.New("refresh токен истек")
 	ErrInvalidCredentials   = errors.New("неверные учетные данные")
 	ErrInvalidRefreshToken  = errors.New("невалидный refresh токен")
+	ErrTokenExpired         = errors.New("токен истёк")
+	ErrTokenInvalid         = errors.New("токен невалиден")
 )
 
 var (
@@ -26,4 +29,7 @@ var (
 	ErrRateLimited         = errors.New("превышен лимит запросов")
 	ErrDuplicateRequest    = errors.New("повторный запрос")
 	ErrRefreshTokenReuse   = errors.New("повторное использование refresh токена")
+	ErrInvalidEmail        = errors.New("невалидный email")
+	ErrInvalidPassword     = errors.New("невалидный пароль")
+	ErrInvalidName         = errors.New("невалидное имя")
 )
