@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"processing/internal/decimal"
+	"processing/internal/delivery/http/requestctx"
 	"processing/internal/domain"
 
 	"github.com/google/uuid"
@@ -22,14 +23,13 @@ func (h *handler) Transfer(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	ctx := r.Context()
 
-	// Get user_id from context (middleware)
-	ctxUserID, ok := ctx.Value("user_id").(string)
+	identity, ok := requestctx.IdentityFrom(ctx)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, errors.New("user_id не найден в контексте"), 0)
 		return
 	}
 
-	senderID, err := uuid.Parse(ctxUserID)
+	senderID, err := uuid.Parse(identity.UserID)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err, 0)
 		return
@@ -80,13 +80,13 @@ func (h *handler) GetTransaction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	ctxUserID, ok := ctx.Value("user_id").(string)
+	identity, ok := requestctx.IdentityFrom(ctx)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, errors.New("user_id не найден в контексте"), 0)
 		return
 	}
 
-	userID, err := uuid.Parse(ctxUserID)
+	userID, err := uuid.Parse(identity.UserID)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err, 0)
 		return
@@ -117,13 +117,13 @@ func (h *handler) TransactionFilter(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	ctx := r.Context()
-	ctxUserID, ok := ctx.Value("user_id").(string)
+	identity, ok := requestctx.IdentityFrom(ctx)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, errors.New("user_id не найден в контексте"), 0)
 		return
 	}
 
-	userID, err := uuid.Parse(ctxUserID)
+	userID, err := uuid.Parse(identity.UserID)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err, 0)
 		return

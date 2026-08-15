@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"processing/internal/delivery/http/requestctx"
 
 	"github.com/google/uuid"
 )
@@ -143,13 +144,13 @@ func (h *handler) LogoutAll(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	ctx := r.Context()
 
-	ctxUserID, ok := r.Context().Value("user_id").(string)
+	identity, ok := requestctx.IdentityFrom(ctx)
 	if !ok {
 		writeError(w, http.StatusBadRequest, errors.New("поле user_id должно быть string"), 1)
 		return
 	}
 
-	userID, err := uuid.Parse(ctxUserID)
+	userID, err := uuid.Parse(identity.UserID)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err, 0)
 		return

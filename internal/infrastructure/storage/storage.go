@@ -112,8 +112,8 @@ func (s *accountRepo) GetByEmail(ctx context.Context, email string) (*domain.Acc
 // Sub - вычетает сумму с баланса аккаунта
 func (s *accountRepo) Sub(ctx context.Context, sender_id uuid.UUID, amount decimal.Decimal) error {
 	query := `
-	UPDATE accounts 
-	SET balance = balance - $1 
+	UPDATE accounts
+	SET balance = balance - $1
 	WHERE id = $2 AND balance >= $1
 	`
 	res, err := s.tx.ExecContext(ctx, query, amount, sender_id)
@@ -244,10 +244,10 @@ func (s *txRepo) TotalTransactions(ctx context.Context, userID uuid.UUID) (int, 
 	return count, nil
 }
 
-func (s *txToken) SaveRefreshToken(ctx context.Context, jti string, user_id string, expires_at time.Time) error {
-	query := `INSERT INTO refresh_token(jti, user_id, expires_at, revoked) VALUES($1, $2, $3, false)`
+func (s *txToken) SaveRefreshToken(ctx context.Context, jti string, userID, familyID uuid.UUID, expiresAt time.Time) error {
+	query := `INSERT INTO refresh_token(jti, user_id, family_id, expires_at, revoked) VALUES($1, $2, $3, $4, false)`
 
-	res, err := s.tx.ExecContext(ctx, query, jti, user_id, expires_at)
+	res, err := s.tx.ExecContext(ctx, query, jti, userID, familyID, expiresAt)
 	if err != nil {
 		return domain.ErrSaveRefreshToken
 	}
@@ -265,10 +265,10 @@ func (s *txToken) SaveRefreshToken(ctx context.Context, jti string, user_id stri
 }
 
 func (s *txToken) GetRefreshToken(ctx context.Context, jti string) (*domain.RefreshSession, error) {
-	query := `SELECT user_id, revoked, expires_at FROM refresh_token WHERE jti = $1`
+	query := `SELECT user_id, family_id, revoked, expires_at FROM refresh_token WHERE jti = $1`
 
 	session := &domain.RefreshSession{}
-	err := s.tx.QueryRowContext(ctx, query, jti).Scan(&session.UserID, &session.Revoked, &session.ExpiresAt)
+	err := s.tx.QueryRowContext(ctx, query, jti).Scan(&session.UserID, &session.FamilyID, &session.Revoked, &session.ExpiresAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, domain.ErrRefreshTokenNotFound
@@ -314,6 +314,17 @@ func (s *txToken) RevokeAllUserTokens(ctx context.Context, userID uuid.UUID) err
 
 	if rows == 0 {
 		return domain.ErrUserNotFound
+	}
+
+	return nil
+}
+
+func (s *txToken) RevokeTokenFamily(ctx context.Context, familyID uuid.UUID) error {
+	query := `UPDATE refresh_token SET revoked = true WHERE family_id = $1 AND revoked = false`
+
+	_, err := s.tx.ExecContext(ctx, query, familyID)
+	if err != nil {
+		return fmt.Errorf("отзыв семейства refresh токенов: %w", err)
 	}
 
 	return nil

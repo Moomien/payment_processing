@@ -35,9 +35,10 @@ type AccountsStorage interface {
 
 // TokenStorage управляет refresh токенами
 type TokenStorage interface {
-	SaveRefreshToken(ctx context.Context, jti string, user_id string, expires_at time.Time) error
+	SaveRefreshToken(ctx context.Context, jti string, userID, familyID uuid.UUID, expiresAt time.Time) error
 	GetRefreshToken(ctx context.Context, jti string) (*RefreshSession, error)
 	RevokeRefreshToken(ctx context.Context, jti string) error
+	RevokeTokenFamily(ctx context.Context, familyID uuid.UUID) error
 	RevokeAllUserTokens(ctx context.Context, userID uuid.UUID) error
 }
 

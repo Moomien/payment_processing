@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"processing/internal/decimal"
 	"processing/internal/delivery/http/mocks"
+	"processing/internal/delivery/http/requestctx"
 	"processing/internal/domain"
 	"testing"
 	"time"
@@ -102,7 +103,7 @@ func TestGetAccountHandler(t *testing.T) {
 
 			req := httptest.NewRequest(http.MethodGet, "/accounts/"+tt.accountID, nil)
 			req.SetPathValue("id", tt.accountID)
-			ctx := context.WithValue(context.Background(), "user_id", testUserID.String())
+			ctx := requestctx.WithIdentity(context.Background(), requestctx.Identity{UserID: testUserID.String()})
 			req = req.WithContext(ctx)
 
 			rr := httptest.NewRecorder()
@@ -313,7 +314,7 @@ func TestAccountTransactionsHandler(t *testing.T) {
 			url := "/accounts/" + tt.accountID + "/transactions?limit=" + tt.limit + "&offset=" + tt.offset
 			req := httptest.NewRequest(http.MethodGet, url, nil)
 			req.SetPathValue("id", tt.accountID)
-			ctx := context.WithValue(context.Background(), "user_id", testUserID.String())
+			ctx := requestctx.WithIdentity(context.Background(), requestctx.Identity{UserID: testUserID.String()})
 			req = req.WithContext(ctx)
 
 			rr := httptest.NewRecorder()

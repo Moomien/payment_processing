@@ -1,19 +1,12 @@
 package middleware
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 	jwtLayer "processing/internal/delivery/http/jwt"
+	"processing/internal/delivery/http/requestctx"
 	"strings"
-)
-
-type ctxKey int
-
-const (
-	ctxUserID ctxKey = iota
-	ctxRole
 )
 
 type Auth struct {
@@ -42,8 +35,10 @@ func (a Auth) Middleware(next http.Handler) http.Handler {
 			return
 		}
 
-		ctx := context.WithValue(r.Context(), ctxUserID, claims.UserID)
-		ctx = context.WithValue(ctx, ctxRole, claims.Role)
+		ctx := requestctx.WithIdentity(r.Context(), requestctx.Identity{
+			UserID: claims.UserID,
+			Role:   claims.Role,
+		})
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

@@ -96,7 +96,8 @@ func TestAuthLoginCommitsReadBeforePasswordCheckAndSavesSession(t *testing.T) {
 	assert.True(t, readUOW.committed)
 	assert.True(t, writeUOW.committed)
 	assert.Equal(t, "new-jti", writeTokens.savedJTI)
-	assert.Equal(t, userID.String(), writeTokens.savedUserID)
+	assert.Equal(t, userID, writeTokens.savedUserID)
+	assert.NotEqual(t, uuid.Nil, writeTokens.savedFamilyID)
 	require.Len(t, cache.keys, 1)
 	assert.Contains(t, cache.keys[0], "auth:login:127.0.0.1:")
 }
@@ -134,7 +135,7 @@ func TestAuthRefreshRejectsClaimsSessionMismatch(t *testing.T) {
 	uow := &fakeUOW{
 		accounts: &fakeAccounts{},
 		tokens: &fakeTokens{session: &domain.RefreshSession{
-			UserID: userID, ExpiresAt: time.Now().Add(time.Hour),
+			UserID: userID, FamilyID: uuid.New(), ExpiresAt: time.Now().Add(time.Hour),
 		}},
 	}
 	manager := &fakeTokenManager{claims: refreshClaims(uuid.New().String(), "old-jti")}
@@ -149,7 +150,8 @@ func TestAuthRefreshRejectsClaimsSessionMismatch(t *testing.T) {
 
 func TestAuthRefreshRotatesSessionAtomically(t *testing.T) {
 	userID := uuid.New()
-	tokens := &fakeTokens{session: &domain.RefreshSession{UserID: userID, ExpiresAt: time.Now().Add(time.Hour)}}
+	familyID := uuid.New()
+	tokens := &fakeTokens{session: &domain.RefreshSession{UserID: userID, FamilyID: familyID, ExpiresAt: time.Now().Add(time.Hour)}}
 	uow := &fakeUOW{
 		accounts: &fakeAccounts{byID: &domain.Account{ID: userID, Role: domain.RoleUser}},
 		tokens:   tokens,
@@ -169,13 +171,15 @@ func TestAuthRefreshRotatesSessionAtomically(t *testing.T) {
 	assert.Equal(t, "new-access", pair.AccessToken)
 	assert.Equal(t, "old-jti", tokens.revokedJTI)
 	assert.Equal(t, "new-jti", tokens.savedJTI)
+	assert.Equal(t, familyID, tokens.savedFamilyID)
 	assert.True(t, uow.committed)
 }
 
-func TestAuthRefreshReuseRevokesAllUserSessions(t *testing.T) {
+func TestAuthRefreshReuseRevokesTokenFamily(t *testing.T) {
 	userID := uuid.New()
+	familyID := uuid.New()
 	tokens := &fakeTokens{session: &domain.RefreshSession{
-		UserID: userID, Revoked: true, ExpiresAt: time.Now().Add(time.Hour),
+		UserID: userID, FamilyID: familyID, Revoked: true, ExpiresAt: time.Now().Add(time.Hour),
 	}}
 	uow := &fakeUOW{accounts: &fakeAccounts{}, tokens: tokens}
 	manager := &fakeTokenManager{claims: refreshClaims(userID.String(), "old-jti")}
@@ -184,14 +188,16 @@ func TestAuthRefreshReuseRevokesAllUserSessions(t *testing.T) {
 	_, err := service.Refresh(context.Background(), "refresh", "127.0.0.1")
 
 	assert.ErrorIs(t, err, domain.ErrRefreshTokenReuse)
-	assert.Equal(t, userID, tokens.revokedAllUserID)
+	assert.Equal(t, familyID, tokens.revokedFamilyID)
+	assert.Equal(t, uuid.Nil, tokens.revokedAllUserID)
 	assert.True(t, uow.committed)
 }
 
 func TestAuthRefreshConcurrentConsumeIsTreatedAsReuse(t *testing.T) {
 	userID := uuid.New()
+	familyID := uuid.New()
 	tokens := &fakeTokens{
-		session:   &domain.RefreshSession{UserID: userID, ExpiresAt: time.Now().Add(time.Hour)},
+		session:   &domain.RefreshSession{UserID: userID, FamilyID: familyID, ExpiresAt: time.Now().Add(time.Hour)},
 		revokeErr: domain.ErrRefreshTokenNotFound,
 	}
 	uow := &fakeUOW{accounts: &fakeAccounts{}, tokens: tokens}
@@ -201,14 +207,15 @@ func TestAuthRefreshConcurrentConsumeIsTreatedAsReuse(t *testing.T) {
 	_, err := service.Refresh(context.Background(), "refresh", "127.0.0.1")
 
 	assert.ErrorIs(t, err, domain.ErrRefreshTokenReuse)
-	assert.Equal(t, userID, tokens.revokedAllUserID)
+	assert.Equal(t, familyID, tokens.revokedFamilyID)
+	assert.Equal(t, uuid.Nil, tokens.revokedAllUserID)
 	assert.True(t, uow.committed)
 }
 
 func TestAuthRefreshUsesInjectedClockForSessionExpiry(t *testing.T) {
 	now := time.Date(2026, time.August, 10, 12, 0, 0, 0, time.UTC)
 	userID := uuid.New()
-	tokens := &fakeTokens{session: &domain.RefreshSession{UserID: userID, ExpiresAt: now}}
+	tokens := &fakeTokens{session: &domain.RefreshSession{UserID: userID, FamilyID: uuid.New(), ExpiresAt: now}}
 	uow := &fakeUOW{accounts: &fakeAccounts{}, tokens: tokens}
 	manager := &fakeTokenManager{claims: refreshClaims(userID.String(), "old-jti")}
 	service := newTestAuthService(&fakeTxFactory{uows: []domain.UnitOfWork{uow}}, &fakeAuthCache{}, manager)
@@ -340,17 +347,21 @@ type fakeTokens struct {
 	session          *domain.RefreshSession
 	getErr           error
 	savedJTI         string
-	savedUserID      string
+	savedUserID      uuid.UUID
+	savedFamilyID    uuid.UUID
 	saveErr          error
 	revokedJTI       string
 	revokeErr        error
+	revokedFamilyID  uuid.UUID
+	revokeFamilyErr  error
 	revokedAllUserID uuid.UUID
 	revokeAllErr     error
 }
 
-func (f *fakeTokens) SaveRefreshToken(_ context.Context, jti, userID string, _ time.Time) error {
+func (f *fakeTokens) SaveRefreshToken(_ context.Context, jti string, userID, familyID uuid.UUID, _ time.Time) error {
 	f.savedJTI = jti
 	f.savedUserID = userID
+	f.savedFamilyID = familyID
 	return f.saveErr
 }
 
@@ -361,6 +372,11 @@ func (f *fakeTokens) GetRefreshToken(context.Context, string) (*domain.RefreshSe
 func (f *fakeTokens) RevokeRefreshToken(_ context.Context, jti string) error {
 	f.revokedJTI = jti
 	return f.revokeErr
+}
+
+func (f *fakeTokens) RevokeTokenFamily(_ context.Context, familyID uuid.UUID) error {
+	f.revokedFamilyID = familyID
+	return f.revokeFamilyErr
 }
 
 func (f *fakeTokens) RevokeAllUserTokens(_ context.Context, userID uuid.UUID) error {

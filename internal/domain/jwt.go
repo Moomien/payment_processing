@@ -18,6 +18,7 @@ type AuthUseCase interface {
 
 type RefreshSession struct {
 	UserID    uuid.UUID
+	FamilyID  uuid.UUID
 	Revoked   bool
 	ExpiresAt time.Time
 }

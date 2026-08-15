@@ -3,6 +3,7 @@ package handlers
 import (
 	"errors"
 	"net/http"
+	"processing/internal/delivery/http/requestctx"
 	"processing/internal/domain"
 	"strconv"
 
@@ -28,12 +29,12 @@ func (h *handler) GetAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctxUserID, ok := ctx.Value("user_id").(string)
+	identity, ok := requestctx.IdentityFrom(ctx)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, errors.New("user_id не найден в контексте"), 0)
 		return
 	}
-	if ctxUserID != accountID.String() {
+	if identity.UserID != accountID.String() {
 		writeError(w, http.StatusForbidden, domain.ErrAccessDenied, 0)
 		return
 	}
@@ -66,12 +67,12 @@ func (h *handler) AccountTransactions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctxUserID, ok := ctx.Value("user_id").(string)
+	identity, ok := requestctx.IdentityFrom(ctx)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, errors.New("user_id не найден в контексте"), 0)
 		return
 	}
-	if ctxUserID != accountID.String() {
+	if identity.UserID != accountID.String() {
 		writeError(w, http.StatusForbidden, domain.ErrAccessDenied, 0)
 		return
 	}

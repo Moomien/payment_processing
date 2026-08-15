@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"processing/internal/decimal"
 	"processing/internal/delivery/http/mocks"
+	"processing/internal/delivery/http/requestctx"
 	"processing/internal/domain"
 	"testing"
 	"time"
@@ -141,7 +142,7 @@ func TestTransactionTransferHandler(t *testing.T) {
 			if tt.idempotencyKey != "" {
 				req.Header.Set("Idempotency-Key", tt.idempotencyKey)
 			}
-			ctx := context.WithValue(context.Background(), "user_id", testSenderID.String())
+			ctx := requestctx.WithIdentity(context.Background(), requestctx.Identity{UserID: testSenderID.String()})
 			req = req.WithContext(ctx)
 			rr := httptest.NewRecorder()
 			handler.Transfer(rr, req)
@@ -245,7 +246,7 @@ func TestGetTransactionHandler(t *testing.T) {
 
 			req := httptest.NewRequest(http.MethodGet, "/transactions/"+tt.transactionID, nil)
 			req.SetPathValue("id", tt.transactionID)
-			ctx := context.WithValue(context.Background(), "user_id", testUserID.String())
+			ctx := requestctx.WithIdentity(context.Background(), requestctx.Identity{UserID: testUserID.String()})
 			req = req.WithContext(ctx)
 
 			rr := httptest.NewRecorder()
@@ -406,7 +407,7 @@ func TestTransactionFilterHandler(t *testing.T) {
 			if tt.idempotencyKey != "" {
 				req.Header.Set("Idempotency-Key", tt.idempotencyKey)
 			}
-			ctx := context.WithValue(context.Background(), "user_id", testUserID.String())
+			ctx := requestctx.WithIdentity(context.Background(), requestctx.Identity{UserID: testUserID.String()})
 			req = req.WithContext(ctx)
 
 			rr := httptest.NewRecorder()

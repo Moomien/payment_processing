@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"processing/internal/decimal"
 	"processing/internal/delivery/http/mocks"
+	"processing/internal/delivery/http/requestctx"
 	"processing/internal/domain"
 	"testing"
 
@@ -951,7 +952,7 @@ func TestLogoutAllHandler(t *testing.T) {
 		{
 			name: "успешный logout всех сессий",
 			setupContext: func(ctx context.Context) context.Context {
-				return context.WithValue(ctx, "user_id", testUserID.String())
+				return requestctx.WithIdentity(ctx, requestctx.Identity{UserID: testUserID.String()})
 			},
 			setupMock: func(authMock *mocks.AuthUseCase) {
 				authMock.On("LogoutAll", mock.Anything, testUserID).
@@ -1003,25 +1004,9 @@ func TestLogoutAllHandler(t *testing.T) {
 			},
 		},
 		{
-			name: "user_id не является строкой",
-			setupContext: func(ctx context.Context) context.Context {
-				return context.WithValue(ctx, "user_id", 12345)
-			},
-			setupMock:          func(authMock *mocks.AuthUseCase) {},
-			expectedStatusCode: http.StatusBadRequest,
-			checkResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
-				var response map[string]interface{}
-				err := json.NewDecoder(rec.Body).Decode(&response)
-				assert.NoError(t, err)
-				assert.Contains(t, response, "error")
-				assert.Contains(t, response, "message")
-				assert.Contains(t, response["message"], "поле user_id должно быть string")
-			},
-		},
-		{
 			name: "невалидный формат UUID",
 			setupContext: func(ctx context.Context) context.Context {
-				return context.WithValue(ctx, "user_id", "invalid-uuid-format")
+				return requestctx.WithIdentity(ctx, requestctx.Identity{UserID: "invalid-uuid-format"})
 			},
 			setupMock:          func(authMock *mocks.AuthUseCase) {},
 			expectedStatusCode: http.StatusBadRequest,
@@ -1035,7 +1020,7 @@ func TestLogoutAllHandler(t *testing.T) {
 		{
 			name: "пустая строка вместо UUID",
 			setupContext: func(ctx context.Context) context.Context {
-				return context.WithValue(ctx, "user_id", "")
+				return requestctx.WithIdentity(ctx, requestctx.Identity{})
 			},
 			setupMock:          func(authMock *mocks.AuthUseCase) {},
 			expectedStatusCode: http.StatusBadRequest,
@@ -1049,7 +1034,7 @@ func TestLogoutAllHandler(t *testing.T) {
 		{
 			name: "ошибка при LogoutAll в usecase",
 			setupContext: func(ctx context.Context) context.Context {
-				return context.WithValue(ctx, "user_id", testUserID.String())
+				return requestctx.WithIdentity(ctx, requestctx.Identity{UserID: testUserID.String()})
 			},
 			setupMock: func(authMock *mocks.AuthUseCase) {
 				authMock.On("LogoutAll", mock.Anything, testUserID).
@@ -1067,7 +1052,7 @@ func TestLogoutAllHandler(t *testing.T) {
 			name: "валидный UUID с другим пользователем",
 			setupContext: func(ctx context.Context) context.Context {
 				anotherUserID := uuid.New()
-				return context.WithValue(ctx, "user_id", anotherUserID.String())
+				return requestctx.WithIdentity(ctx, requestctx.Identity{UserID: anotherUserID.String()})
 			},
 			setupMock: func(authMock *mocks.AuthUseCase) {
 				authMock.On("LogoutAll", mock.Anything, mock.AnythingOfType("uuid.UUID")).

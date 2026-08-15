@@ -121,7 +121,11 @@ func (as *AuthService) Login(ctx context.Context, email, password, ip string) (*
 	if err != nil {
 		return nil, fmt.Errorf("генерация токенов: %w", err)
 	}
-	if err := as.saveRefreshSession(ctx, pair, account.ID); err != nil {
+	familyID, err := uuid.NewRandom()
+	if err != nil {
+		return nil, fmt.Errorf("генерация family ID: %w", err)
+	}
+	if err := as.saveRefreshSession(ctx, pair, account.ID, familyID); err != nil {
 		return nil, err
 	}
 
@@ -162,7 +166,7 @@ func (as *AuthService) Refresh(ctx context.Context, refreshToken, ip string) (*d
 		return nil, domain.ErrInvalidRefreshToken
 	}
 	if session.Revoked {
-		return nil, as.revokeAllAfterReuse(ctx, uow, session.UserID)
+		return nil, as.revokeFamilyAfterReuse(ctx, uow, session.FamilyID)
 	}
 	if !as.now().Before(session.ExpiresAt) {
 		if err := uow.Tokens().RevokeRefreshToken(ctx, claims.ID); err != nil && !errors.Is(err, domain.ErrRefreshTokenNotFound) {
@@ -176,7 +180,7 @@ func (as *AuthService) Refresh(ctx context.Context, refreshToken, ip string) (*d
 
 	if err := uow.Tokens().RevokeRefreshToken(ctx, claims.ID); err != nil {
 		if errors.Is(err, domain.ErrRefreshTokenNotFound) {
-			return nil, as.revokeAllAfterReuse(ctx, uow, session.UserID)
+			return nil, as.revokeFamilyAfterReuse(ctx, uow, session.FamilyID)
 		}
 		return nil, fmt.Errorf("отзыв refresh-сессии: %w", err)
 	}
@@ -189,7 +193,7 @@ func (as *AuthService) Refresh(ctx context.Context, refreshToken, ip string) (*d
 	if err != nil {
 		return nil, fmt.Errorf("генерация новых токенов: %w", err)
 	}
-	if err := uow.Tokens().SaveRefreshToken(ctx, newPair.JTI, account.ID.String(), newPair.ExpiresAt); err != nil {
+	if err := uow.Tokens().SaveRefreshToken(ctx, newPair.JTI, account.ID, session.FamilyID, newPair.ExpiresAt); err != nil {
 		return nil, fmt.Errorf("сохранение новой refresh-сессии: %w", err)
 	}
 	if err := uow.Commit(); err != nil {
@@ -200,7 +204,6 @@ func (as *AuthService) Refresh(ctx context.Context, refreshToken, ip string) (*d
 	return publicTokenPair(newPair), nil
 }
 
-// Logout is fail-open for cache/rate-limit failures: revocation must remain available.
 func (as *AuthService) Logout(ctx context.Context, refreshToken, ip string) error {
 	if err := as.checkRateLimit(ctx, "logout", ip); err != nil {
 		as.log.WarnContext(ctx, "rate limit не блокирует logout", "err", err)
@@ -271,13 +274,13 @@ func (as *AuthService) loadAccountForLogin(ctx context.Context, email string) (*
 	return account, nil
 }
 
-func (as *AuthService) saveRefreshSession(ctx context.Context, pair *domain.TokenPair, userID uuid.UUID) error {
+func (as *AuthService) saveRefreshSession(ctx context.Context, pair *domain.TokenPair, userID, familyID uuid.UUID) error {
 	uow, err := as.tx.NewTX(ctx)
 	if err != nil {
 		return fmt.Errorf("открытие транзакции refresh-сессии: %w", err)
 	}
 	defer func() { _ = uow.Rollback() }()
-	if err := uow.Tokens().SaveRefreshToken(ctx, pair.JTI, userID.String(), pair.ExpiresAt); err != nil {
+	if err := uow.Tokens().SaveRefreshToken(ctx, pair.JTI, userID, familyID, pair.ExpiresAt); err != nil {
 		return fmt.Errorf("сохранение refresh-сессии: %w", err)
 	}
 	if err := uow.Commit(); err != nil {
@@ -286,13 +289,12 @@ func (as *AuthService) saveRefreshSession(ctx context.Context, pair *domain.Toke
 	return nil
 }
 
-func (as *AuthService) revokeAllAfterReuse(ctx context.Context, uow domain.UnitOfWork, userID uuid.UUID) error {
-	err := uow.Tokens().RevokeAllUserTokens(ctx, userID)
-	if err != nil && !errors.Is(err, domain.ErrUserNotFound) {
-		return fmt.Errorf("отзыв сессий после reuse: %w", err)
+func (as *AuthService) revokeFamilyAfterReuse(ctx context.Context, uow domain.UnitOfWork, familyID uuid.UUID) error {
+	if err := uow.Tokens().RevokeTokenFamily(ctx, familyID); err != nil {
+		return fmt.Errorf("отзыв семейства сессий после reuse: %w", err)
 	}
 	if err := uow.Commit(); err != nil {
-		return fmt.Errorf("коммит отзыва после reuse: %w", err)
+		return fmt.Errorf("коммит отзыва семейства после reuse: %w", err)
 	}
 	return domain.ErrRefreshTokenReuse
 }
