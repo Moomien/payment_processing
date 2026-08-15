@@ -13,6 +13,21 @@ import (
 	"github.com/joho/godotenv"
 )
 
+const (
+	EnvironmentDevelopment = "development"
+	EnvironmentStaging     = "staging"
+	EnvironmentProduction  = "production"
+)
+
+const (
+	SSLModeDisable    = "disable"
+	SSLModeAllow      = "allow"
+	SSLModePrefer     = "prefer"
+	SSLModeRequire    = "require"
+	SSLModeVerifyCA   = "verify-ca"
+	SSLModeVerifyFull = "verify-full"
+)
+
 type Config struct {
 	Environment string
 	LogLevel    string
@@ -33,8 +48,8 @@ type HTTPConfig struct {
 type JWTConfig struct {
 	AccessSecret  string
 	RefreshSecret string
-	AccessTTL     time.Duration // короткий TTL
-	RefreshTTL    time.Duration // длинный TTL
+	AccessTTL     time.Duration
+	RefreshTTL    time.Duration
 	Issuer        string
 }
 
@@ -66,12 +81,12 @@ type RateLimitConfig struct {
 }
 
 func Load() (*Config, error) {
-	if err := godotenv.Load(); err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err := loadDotEnv(); err != nil {
 		return nil, err
 	}
 
 	cfg := &Config{
-		Environment: getEnv("ENVIRONMENT", "development"),
+		Environment: getEnv("ENVIRONMENT", EnvironmentDevelopment),
 		LogLevel:    getEnv("LOG_LEVEL", "info"),
 	}
 
@@ -82,15 +97,7 @@ func Load() (*Config, error) {
 		ShutdownTimeout: getEnvAsDuration("HTTP_SHUTDOWN_TIMEOUT", 10*time.Second),
 	}
 
-	cfg.Postgres = PostgresConfig{
-		HOST:     getEnv("POSTGRES_HOST", "localhost"),
-		PORT:     getEnv("POSTGRES_PORT", "5432"),
-		DBNAME:   getEnv("POSTGRES_DB", ""),
-		USER:     getEnv("POSTGRES_USER", ""),
-		PASSWORD: getEnv("POSTGRES_PASSWORD", ""),
-		SSLMODE:  getEnv("POSTGRES_SSLMODE", "require"),
-		MaxConns: int(getEnvAsInt("POSTGRES_MAX_CONNS", 10)),
-	}
+	cfg.Postgres = loadPostgresConfig()
 
 	cfg.Redis = RedisConfig{
 		HOST:     getEnv("REDIS_HOST", "localhost"),
@@ -120,9 +127,40 @@ func Load() (*Config, error) {
 	return cfg, nil
 }
 
+func LoadPostgres() (PostgresConfig, error) {
+	if err := loadDotEnv(); err != nil {
+		return PostgresConfig{}, err
+	}
+
+	cfg := loadPostgresConfig()
+	if err := cfg.Validate(); err != nil {
+		return PostgresConfig{}, err
+	}
+	return cfg, nil
+}
+
+func loadPostgresConfig() PostgresConfig {
+	return PostgresConfig{
+		HOST:     getEnv("POSTGRES_HOST", "localhost"),
+		PORT:     getEnv("POSTGRES_PORT", "5432"),
+		DBNAME:   getEnv("POSTGRES_DB", ""),
+		USER:     getEnv("POSTGRES_USER", ""),
+		PASSWORD: getEnv("POSTGRES_PASSWORD", ""),
+		SSLMODE:  getEnv("POSTGRES_SSLMODE", SSLModeRequire),
+		MaxConns: int(getEnvAsInt("POSTGRES_MAX_CONNS", 10)),
+	}
+}
+
+func loadDotEnv() error {
+	if err := godotenv.Load(); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
 func (c *Config) Validate() error {
 	var errs []error
-	if !oneOf(c.Environment, "developmnet", "staging", "production") {
+	if !oneOf(c.Environment, EnvironmentDevelopment, EnvironmentStaging, EnvironmentProduction) {
 		errs = append(errs, fmt.Errorf("ENVIRONMENT: недопустимое значение %q", c.Environment))
 	}
 
@@ -130,18 +168,7 @@ func (c *Config) Validate() error {
 		errs = append(errs, fmt.Errorf("LOG_LEVEL: недопустимое значение %q", c.LogLevel))
 	}
 
-	errs = append(errs, required("POSTGRES_HOST", c.Postgres.HOST))
-	errs = append(errs, required("POSTGRES_PORT", c.Postgres.PORT))
-	errs = append(errs, required("POSTGRES_DB", c.Postgres.DBNAME))
-	errs = append(errs, required("POSTGRES_USER", c.Postgres.USER))
-	errs = append(errs, required("POSTGRES_PASSWORD", c.Postgres.PASSWORD))
-
-	if !oneOf(c.Postgres.SSLMODE, "disable", "allow", "prefer", "require", "verify-ca", "verify-full") {
-		errs = append(errs, fmt.Errorf("POSTGRES_SSLMODE: недопустимое значение %q", c.Postgres.SSLMODE))
-	}
-	if c.Postgres.MaxConns <= 0 {
-		errs = append(errs, errors.New("POSTGRES_MAX_CONNS: должен быть больше нуля"))
-	}
+	errs = append(errs, c.Postgres.Validate())
 
 	errs = append(errs, required("REDIS_HOST", c.Redis.HOST))
 	errs = append(errs, required("REDIS_PORT", c.Redis.PORT))
@@ -166,8 +193,8 @@ func (c *Config) Validate() error {
 		errs = append(errs, errors.New("RATE_LIMIT_*: лимиты должны возрастать(minute <= hour <= day)"))
 	}
 
-	if c.Environment == "production" {
-		if c.Postgres.SSLMODE == "disable" || c.Postgres.SSLMODE == "allow" || c.Postgres.SSLMODE == "prefer" {
+	if c.Environment == EnvironmentProduction {
+		if c.Postgres.SSLMODE == SSLModeDisable || c.Postgres.SSLMODE == SSLModeAllow || c.Postgres.SSLMODE == SSLModePrefer {
 			errs = append(errs, fmt.Errorf("POSTGRES_SSLMODE=%q защищен в production", c.Postgres.SSLMODE))
 		}
 		if c.Redis.PASSWORD == "" {
@@ -175,6 +202,23 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	return errors.Join(errs...)
+}
+
+func (c PostgresConfig) Validate() error {
+	var errs []error
+	errs = append(errs, required("POSTGRES_HOST", c.HOST))
+	errs = append(errs, required("POSTGRES_PORT", c.PORT))
+	errs = append(errs, required("POSTGRES_DB", c.DBNAME))
+	errs = append(errs, required("POSTGRES_USER", c.USER))
+	errs = append(errs, required("POSTGRES_PASSWORD", c.PASSWORD))
+
+	if !oneOf(c.SSLMODE, SSLModeDisable, SSLModeAllow, SSLModePrefer, SSLModeRequire, SSLModeVerifyCA, SSLModeVerifyFull) {
+		errs = append(errs, fmt.Errorf("POSTGRES_SSLMODE: недопустимое значение %q", c.SSLMODE))
+	}
+	if c.MaxConns <= 0 {
+		errs = append(errs, errors.New("POSTGRES_MAX_CONNS: должен быть больше нуля"))
+	}
 	return errors.Join(errs...)
 }
 

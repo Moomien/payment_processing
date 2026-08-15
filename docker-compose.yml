@@ -12,16 +12,17 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-postgres_bd}
       POSTGRES_USER: ${POSTGRES_USER:-admin}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secret}
-      POSTGRES_SSL: disable
+      POSTGRES_SSLMODE: disable
+      POSTGRES_MAX_CONNS: "10"
       REDIS_HOST: redis
       REDIS_PORT: "6379"
       REDIS_USER: ""
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
-      REDIS_RATE_LIMIT_MIN: ${REDIS_RATE_LIMIT_MIN:-20}
-      REDIS_RATE_LIMIT_HOUR: ${REDIS_RATE_LIMIT_HOUR:-100}
-      REDIS_RATE_LIMIT_DAY: ${REDIS_RATE_LIMIT_DAY:-500}
-      accessSecretKey: ${ACCESS_TOKEN_SECRET:-development-access-secret-change-me}
-      refreshSecretKey: ${REFRESH_TOKEN_SECRET:-development-refresh-secret-change-me}
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-60}
+      RATE_LIMIT_PER_HOUR: ${RATE_LIMIT_PER_HOUR:-1000}
+      RATE_LIMIT_PER_DAY: ${RATE_LIMIT_PER_DAY:-10000}
+      ACCESS_TOKEN_SECRET: ${ACCESS_TOKEN_SECRET:-development-access-secret-change-me}
+      REFRESH_TOKEN_SECRET: ${REFRESH_TOKEN_SECRET:-development-refresh-secret-change-me}
     ports:
       - "${APP_PORT:-8080}:8080"
     depends_on:
@@ -57,7 +58,8 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-postgres_bd}
       POSTGRES_USER: ${POSTGRES_USER:-admin}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secret}
-      POSTGRES_SSL: disable
+      POSTGRES_SSLMODE: disable
+      POSTGRES_MAX_CONNS: "10"
       MIGRATIONS_DIR: /app/migrations
     depends_on:
       postgres:

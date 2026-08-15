@@ -2,10 +2,13 @@ POSTGRES_PORT ?= 5432
 DB_URL ?= postgres://admin:secret@localhost:$(POSTGRES_PORT)/postgres_bd?sslmode=disable
 GO ?= go
 
-.PHONY: run test lint e2e compose-up compose-down docker-up docker-down migrate-up migrate-down
+.PHONY: run stop test lint e2e compose-up compose-down docker-up docker-down migrate-up migrate-down
 
 run:
 	$(GO) run ./cmd/server
+
+stop:
+	docker compose stop app
 
 test:
 	$(GO) test ./internal/...
@@ -16,15 +19,11 @@ lint:
 e2e:
 	$(GO) test -count=1 ./e2e/...
 
-compose-up:
+docker-up:
 	docker compose up --build -d --remove-orphans
 
-compose-down:
+docker-down:
 	docker compose down --remove-orphans
-
-docker-up: compose-up
-
-docker-down: compose-down
 
 migrate-up:
 	goose -dir migrations postgres "$(DB_URL)" up

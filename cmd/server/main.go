@@ -53,9 +53,9 @@ func run() error {
 		Addr:          redis_url,
 		Username:      cfg.Redis.USER,
 		Password:      cfg.Redis.PASSWORD,
-		RateLimitMin:  cfg.Redis.RateLimitMin,
-		RateLimitHour: cfg.Redis.RateLimitHour,
-		RateLimitDay:  cfg.Redis.RateLimitDay,
+		RateLimitMin:  cfg.Ratelimit.PerMinute,
+		RateLimitHour: cfg.Ratelimit.PerHour,
+		RateLimitDay:  cfg.Ratelimit.PerDay,
 	})
 
 	tx := storage.NewUoWFactory(db)

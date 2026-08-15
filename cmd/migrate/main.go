@@ -22,12 +22,12 @@ func main() {
 }
 
 func run() error {
-	cfg, err := config.Load()
+	cfg, err := config.LoadPostgres()
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
 
-	db, err := sql.Open("pgx", cfg.Postgres.PostgresDSN())
+	db, err := sql.Open("pgx", cfg.PostgresDSN())
 	if err != nil {
 		return fmt.Errorf("open postgres: %w", err)
 	}
