@@ -9,11 +9,6 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-var (
-	ErrRateLimitExceed = domain.ErrRateLimited
-	ErrDupRequest      = domain.ErrDuplicateRequest
-)
-
 // Lua скрипт для sliding window rate limiting
 // KEYS[1] - ключ для sorted set
 // ARGV[1] - текущее время (timestamp)
@@ -80,7 +75,7 @@ func (redis *Redis) IdempotencyCheck(ctx context.Context, key string, TTL time.D
 	}
 
 	if !set {
-		return ErrDupRequest
+		return domain.ErrDuplicateRequest
 	}
 	return nil
 }
@@ -120,7 +115,7 @@ func (redis *Redis) checkWindow(ctx context.Context, id string, limit int64, win
 	}
 
 	if allowed == 0 {
-		return ErrRateLimitExceed
+		return domain.ErrRateLimited
 	}
 
 	return nil
