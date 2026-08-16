@@ -9,6 +9,47 @@ import (
 	"github.com/google/uuid"
 )
 
+const MaxIdempotencyKeyLength = 128
+
+type IdempotencyStatus string
+
+const (
+	IdempotencyStatusProcessing IdempotencyStatus = "processing"
+	IdempotencyStatusCompleted  IdempotencyStatus = "completed"
+)
+
+type TransferIdempotency struct {
+	SenderID           uuid.UUID
+	Key                string
+	RequestFingerprint string
+	Status             IdempotencyStatus
+	TransactionID      *uuid.UUID
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+}
+
+func ValidateIdempotencyKey(key string) error {
+	if key == "" {
+		return ErrIdempotencyKeyRequired
+	}
+	if len(key) > MaxIdempotencyKeyLength {
+		return ErrInvalidIdempotencyKey
+	}
+
+	for i := 0; i < len(key); i++ {
+		char := key[i]
+		allowed := char >= 'a' && char <= 'z' ||
+			char >= 'A' && char <= 'Z' ||
+			char >= '0' && char <= '9' ||
+			char == '.' || char == '_' || char == ':' || char == '-'
+		if !allowed {
+			return ErrInvalidIdempotencyKey
+		}
+	}
+
+	return nil
+}
+
 type TransactionUsecase interface {
 	Transfer(ctx context.Context, sender_id, receiver_id uuid.UUID, key string, amount decimal.Decimal) (string, error)
 	GetTransaction(ctx context.Context, transactionID, userID uuid.UUID, key string) (Transaction, error)

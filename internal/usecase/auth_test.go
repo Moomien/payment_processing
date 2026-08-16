@@ -390,6 +390,15 @@ func (fakeTransactionStorage) Transaction(context.Context, *domain.Transaction) 
 func (fakeTransactionStorage) UpdateStatus(context.Context, *domain.Transaction, domain.TransactionStatus) error {
 	return nil
 }
+func (fakeTransactionStorage) TryCreateIdempotency(context.Context, *domain.TransferIdempotency) (bool, error) {
+	return false, nil
+}
+func (fakeTransactionStorage) GetIdempotency(context.Context, uuid.UUID, string) (domain.TransferIdempotency, error) {
+	return domain.TransferIdempotency{}, nil
+}
+func (fakeTransactionStorage) CompleteIdempotency(context.Context, uuid.UUID, string, uuid.UUID) error {
+	return nil
+}
 func (fakeTransactionStorage) GetByID(context.Context, uuid.UUID) (domain.Transaction, error) {
 	return domain.Transaction{}, nil
 }

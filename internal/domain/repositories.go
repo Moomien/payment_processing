@@ -16,10 +16,12 @@ const (
 	StatusFailed    TransactionStatus = "failed"
 )
 
-// Интерфейсы репозиториев (контракты для infrastructure слоя)
 type TransactionStorage interface {
 	Transaction(ctx context.Context, tx *Transaction) error
 	UpdateStatus(ctx context.Context, tx *Transaction, status TransactionStatus) error
+	TryCreateIdempotency(ctx context.Context, record *TransferIdempotency) (bool, error)
+	GetIdempotency(ctx context.Context, senderID uuid.UUID, key string) (TransferIdempotency, error)
+	CompleteIdempotency(ctx context.Context, senderID uuid.UUID, key string, transactionID uuid.UUID) error
 	GetByID(ctx context.Context, transactionID uuid.UUID) (Transaction, error)
 	GetTransactions(ctx context.Context, filter TransactionFilter) ([]Transaction, error)
 	TotalTransactions(ctx context.Context, userID uuid.UUID) (int, error)
@@ -33,7 +35,6 @@ type AccountsStorage interface {
 	Add(ctx context.Context, receiver_id uuid.UUID, amount decimal.Decimal) error
 }
 
-// TokenStorage управляет refresh токенами
 type TokenStorage interface {
 	SaveRefreshToken(ctx context.Context, jti string, userID, familyID uuid.UUID, expiresAt time.Time) error
 	GetRefreshToken(ctx context.Context, jti string) (*RefreshSession, error)

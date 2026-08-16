@@ -177,6 +177,84 @@ func (s *txRepo) UpdateStatus(ctx context.Context, tx *domain.Transaction, statu
 	return nil
 }
 
+func (s *txRepo) TryCreateIdempotency(ctx context.Context, record *domain.TransferIdempotency) (bool, error) {
+	query := `
+	INSERT INTO transfer_idempotency(sender_id, idempotency_key, request_fingerprint, status)
+	VALUES($1, $2, $3, 'processing')
+	ON CONFLICT (sender_id, idempotency_key) DO NOTHING
+	RETURNING status, created_at, updated_at
+	`
+
+	err := s.tx.QueryRowContext(
+		ctx,
+		query,
+		record.SenderID,
+		record.Key,
+		record.RequestFingerprint,
+	).Scan(&record.Status, &record.CreatedAt, &record.UpdatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("создание записи идемпотентности: %w", err)
+	}
+
+	return true, nil
+}
+
+func (s *txRepo) GetIdempotency(ctx context.Context, senderID uuid.UUID, key string) (domain.TransferIdempotency, error) {
+	record := domain.TransferIdempotency{}
+	transactionID := uuid.NullUUID{}
+	query := `
+	SELECT sender_id, idempotency_key, request_fingerprint, status, transaction_id, created_at, updated_at
+	FROM transfer_idempotency
+	WHERE sender_id = $1 AND idempotency_key = $2
+	`
+
+	err := s.tx.QueryRowContext(ctx, query, senderID, key).Scan(
+		&record.SenderID,
+		&record.Key,
+		&record.RequestFingerprint,
+		&record.Status,
+		&transactionID,
+		&record.CreatedAt,
+		&record.UpdatedAt,
+	)
+	if err != nil {
+		return domain.TransferIdempotency{}, fmt.Errorf("получение записи идемпотентности: %w", err)
+	}
+
+	if transactionID.Valid {
+		id := transactionID.UUID
+		record.TransactionID = &id
+	}
+
+	return record, nil
+}
+
+func (s *txRepo) CompleteIdempotency(ctx context.Context, senderID uuid.UUID, key string, transactionID uuid.UUID) error {
+	query := `
+	UPDATE transfer_idempotency
+	SET status = 'completed', transaction_id = $3, updated_at = now()
+	WHERE sender_id = $1 AND idempotency_key = $2 AND status = 'processing'
+	`
+
+	result, err := s.tx.ExecContext(ctx, query, senderID, key, transactionID)
+	if err != nil {
+		return fmt.Errorf("завершение записи идемпотентности: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("проверка завершения записи идемпотентности: %w", err)
+	}
+	if rows != 1 {
+		return fmt.Errorf("запись идемпотентности не найдена или уже завершена")
+	}
+
+	return nil
+}
+
 func (s *txRepo) GetByID(ctx context.Context, transactionID uuid.UUID) (domain.Transaction, error) {
 	transaction := domain.Transaction{}
 	query := `SELECT id, amount, sender_id, receiver_id, status, created_at FROM transactions WHERE id = $1`

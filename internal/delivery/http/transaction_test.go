@@ -11,6 +11,7 @@ import (
 	"processing/internal/delivery/http/mocks"
 	"processing/internal/delivery/http/requestctx"
 	"processing/internal/domain"
+	"strings"
 	"testing"
 	"time"
 
@@ -53,6 +54,7 @@ func TestTransactionTransferHandler(t *testing.T) {
 		{
 			name:        "невалидный JSON",
 			requestBody: `{"invalid json`,
+			idempotencyKey: "test-key-invalid-json",
 			setupMock: func(m *mocks.TransactionUsecase, senderID, receiverID uuid.UUID, amount decimal.Decimal) {
 				// не вызываем Transfer, т.к. ошибка парсинга раньше
 			},
@@ -99,16 +101,55 @@ func TestTransactionTransferHandler(t *testing.T) {
 			},
 			idempotencyKey: "",
 			setupMock: func(m *mocks.TransactionUsecase, senderID, receiverID uuid.UUID, amount decimal.Decimal) {
+				// Transfer не вызывается: обязательный заголовок проверяется раньше.
+			},
+			expectedStatusCode: http.StatusBadRequest,
+			expectError:        true,
+		},
+		{
+			name: "idempotency key с недопустимыми символами",
+			requestBody: transferDTO{
+				Receiver_id: uuid.MustParse("123e4567-e89b-12d3-a456-426614174001"),
+				Amount:      "100.00",
+			},
+			idempotencyKey: "invalid key",
+			setupMock: func(m *mocks.TransactionUsecase, senderID, receiverID uuid.UUID, amount decimal.Decimal) {
+				// Transfer не вызывается: ключ проверяется раньше.
+			},
+			expectedStatusCode: http.StatusBadRequest,
+			expectError:        true,
+		},
+		{
+			name: "слишком длинный idempotency key",
+			requestBody: transferDTO{
+				Receiver_id: uuid.MustParse("123e4567-e89b-12d3-a456-426614174001"),
+				Amount:      "100.00",
+			},
+			idempotencyKey: strings.Repeat("a", domain.MaxIdempotencyKeyLength+1),
+			setupMock: func(m *mocks.TransactionUsecase, senderID, receiverID uuid.UUID, amount decimal.Decimal) {
+				// Transfer не вызывается: ключ проверяется раньше.
+			},
+			expectedStatusCode: http.StatusBadRequest,
+			expectError:        true,
+		},
+		{
+			name: "конфликт idempotency key",
+			requestBody: transferDTO{
+				Receiver_id: uuid.MustParse("123e4567-e89b-12d3-a456-426614174001"),
+				Amount:      "100.00",
+			},
+			idempotencyKey: "conflict-key",
+			setupMock: func(m *mocks.TransactionUsecase, senderID, receiverID uuid.UUID, amount decimal.Decimal) {
 				m.On("Transfer",
 					mock.Anything,
 					senderID,
 					receiverID,
-					"",
+					"conflict-key",
 					amount,
-				).Return("test-transaction-id-2", nil).Once()
+				).Return("", domain.ErrIdempotencyConflict).Once()
 			},
-			expectedStatusCode: http.StatusCreated,
-			expectError:        false,
+			expectedStatusCode: http.StatusConflict,
+			expectError:        true,
 		},
 	}
 

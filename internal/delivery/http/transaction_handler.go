@@ -36,6 +36,11 @@ func (h *handler) Transfer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	key := r.Header.Get("Idempotency-Key")
+	if err := domain.ValidateIdempotencyKey(key); err != nil {
+		writeError(w, http.StatusBadRequest, err, 1)
+		return
+	}
+
 	var dto transferDTO
 	if err := json.NewDecoder(r.Body).Decode(&dto); err != nil {
 		writeError(w, 400, err, 0)
@@ -50,6 +55,10 @@ func (h *handler) Transfer(w http.ResponseWriter, r *http.Request) {
 
 	transactionID, err := h.ts.Transfer(ctx, senderID, dto.Receiver_id, key, amount)
 	if err != nil {
+		if errors.Is(err, domain.ErrIdempotencyConflict) || errors.Is(err, domain.ErrIdempotencyInProgress) {
+			writeError(w, http.StatusConflict, err, 1)
+			return
+		}
 		if errors.Is(err, domain.ErrSameAccount) || errors.Is(err, domain.ErrInvalidAmount) || errors.Is(err, domain.ErrInsufficientFunds) || errors.Is(err, domain.ErrReceiverAccountNotFound) {
 			writeError(w, http.StatusBadRequest, err, 1)
 			return

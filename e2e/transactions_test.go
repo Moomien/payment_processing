@@ -33,6 +33,7 @@ func TestTransactionFlow(t *testing.T) {
 		req, _ := http.NewRequest("POST", ts.Server.URL+"/transactions", bytes.NewBuffer(body))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Authorization", "Bearer "+sender.AccessToken)
+		req.Header.Set("Idempotency-Key", "transaction-flow-success")
 
 		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
@@ -74,6 +75,7 @@ func TestTransactionFlow(t *testing.T) {
 		req, _ := http.NewRequest("POST", ts.Server.URL+"/transactions", bytes.NewBuffer(body))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Authorization", "Bearer "+sender.AccessToken)
+		req.Header.Set("Idempotency-Key", "transaction-flow-insufficient-funds")
 
 		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
@@ -92,6 +94,7 @@ func TestTransactionFlow(t *testing.T) {
 		req, _ := http.NewRequest("POST", ts.Server.URL+"/transactions", bytes.NewBuffer(body))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Authorization", "Bearer "+sender.AccessToken)
+		req.Header.Set("Idempotency-Key", "transaction-flow-same-account")
 
 		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
@@ -110,6 +113,7 @@ func TestTransactionFlow(t *testing.T) {
 		req, _ := http.NewRequest("POST", ts.Server.URL+"/transactions", bytes.NewBuffer(body))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Authorization", "Bearer "+sender.AccessToken)
+		req.Header.Set("Idempotency-Key", "transaction-flow-negative-amount")
 
 		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
@@ -129,6 +133,7 @@ func TestTransactionFlow(t *testing.T) {
 		req, _ := http.NewRequest("POST", ts.Server.URL+"/transactions", bytes.NewBuffer(body))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Authorization", "Bearer "+sender.AccessToken)
+		req.Header.Set("Idempotency-Key", "transaction-flow-missing-receiver")
 
 		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
@@ -159,6 +164,7 @@ func TestGetTransaction(t *testing.T) {
 	req, _ := http.NewRequest("POST", ts.Server.URL+"/transactions", bytes.NewBuffer(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+sender.AccessToken)
+	req.Header.Set("Idempotency-Key", "get-transaction-setup")
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
