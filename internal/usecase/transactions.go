@@ -14,6 +14,14 @@ import (
 
 const transferOperationVersion = "transfer:v1"
 
+type transferCommand struct {
+	SenderID           uuid.UUID
+	ReceiverID         uuid.UUID
+	Key                string
+	Amount             decimal.Decimal
+	RequestFingerprint string
+}
+
 type TransactionsService struct {
 	tx    domain.TxUOW
 	cache domain.Cache
@@ -41,7 +49,13 @@ func (ts *TransactionsService) Transfer(
 		return "", err
 	}
 
-	fingerprint := transferFingerprint(sender_id, receiver_id, amount)
+	command := transferCommand{
+		SenderID:   sender_id,
+		ReceiverID: receiver_id,
+		Key:        key,
+		Amount:     amount,
+	}
+	command.RequestFingerprint = transferFingerprint(command)
 
 	uow, err := ts.tx.NewTX(ctx)
 	if err != nil {
@@ -51,88 +65,25 @@ func (ts *TransactionsService) Transfer(
 
 	defer uow.Rollback()
 
-	record := &domain.TransferIdempotency{
-		SenderID:           sender_id,
-		Key:                key,
-		RequestFingerprint: fingerprint,
-	}
-	created, err := uow.Transactions().TryCreateIdempotency(ctx, record)
+	replayID, err := ts.resolveIdempotency(ctx, uow.Transactions(), command)
 	if err != nil {
-		ts.log.ErrorContext(ctx, "ошибка резервирования Idempotency-Key", "err", err, "sender_id", sender_id)
+		return "", err
+	}
+	if replayID != nil {
+		return replayID.String(), nil
+	}
+
+	if err := ts.cache.CheckRateLimit(ctx, command.SenderID.String()); err != nil {
+		ts.log.WarnContext(ctx, "превышен лимит запросов при переводе", "sender_id", command.SenderID)
 		return "", err
 	}
 
-	if !created {
-		existing, err := uow.Transactions().GetIdempotency(ctx, sender_id, key)
-		if err != nil {
-			ts.log.ErrorContext(ctx, "ошибка получения результа идемпотентности", "err", err, "sender_id", sender_id)
-			return "", err
-		}
-		if existing.RequestFingerprint != fingerprint {
-			ts.log.WarnContext(ctx, "Idempotency-Key повторно использован с другим payload", "sender_id", sender_id)
-			return "", domain.ErrIdempotencyConflict
-		}
-		if existing.Status != domain.IdempotencyStatusCompleted || existing.TransactionID == nil {
-			return "", domain.ErrIdempotencyInProgress
-		}
-
-		ts.log.InfoContext(ctx, "возвращён результат повторного перевода", "transaction_id", *existing.TransactionID, "sender_id", sender_id)
-		return existing.TransactionID.String(), nil
-	}
-
-	if err := ts.cache.CheckRateLimit(ctx, sender_id.String()); err != nil {
-		ts.log.WarnContext(ctx, "превышен лимит запросов при переводе", "sender_id", sender_id)
-		return "", err
-	}
-
-	sender, err := uow.Accounts().GetById(ctx, sender_id)
+	tx, err := ts.executeTransfer(ctx, uow, command)
 	if err != nil {
-		ts.log.ErrorContext(ctx, "ошибка получения аккаунта отправителя", "err", err, "sender_id", sender_id)
-		return "", err
-	}
-	receiver, err := uow.Accounts().GetById(ctx, receiver_id)
-	if err != nil {
-		ts.log.ErrorContext(ctx, "ошибка получения аккаунта получателя", "err", err, "receiver_id", receiver_id)
 		return "", err
 	}
 
-	if sender.ID == receiver.ID {
-		ts.log.WarnContext(ctx, "попытка перевода на собственный счет", "sender_id", sender_id)
-		return "", domain.ErrSameAccount
-	}
-
-	if !amount.IsPositive() {
-		ts.log.WarnContext(ctx, "попытка перевода отрицательной суммы", "sender_id", sender_id, "amount", amount)
-		return "", domain.ErrInvalidAmount
-	}
-
-	if err := uow.Accounts().Sub(ctx, sender_id, amount); err != nil {
-		ts.log.ErrorContext(ctx, "ошибка вычисления суммы со счета отправителя", "err", err, "sender_id", sender_id, "amount", amount)
-		return "", err
-	}
-
-	if err := uow.Accounts().Add(ctx, receiver_id, amount); err != nil {
-		ts.log.ErrorContext(ctx, "ошибка добавления суммы на счет получателя", "err", err, "receiver_id", receiver_id, "amount", amount)
-		return "", err
-	}
-
-	tx, err := domain.NewTransaction(amount, sender_id, receiver_id)
-	if err != nil {
-		ts.log.ErrorContext(ctx, "ошибка создания объекта транзакции", "err", err, "sender_id", sender_id, "receiver_id", receiver_id)
-		return "", err
-	}
-
-	if err := uow.Transactions().Transaction(ctx, tx); err != nil {
-		ts.log.ErrorContext(ctx, "ошибка сохранения транзакции в БД", "err", err, "transaction_id", tx.ID)
-		return "", err
-	}
-
-	if err := uow.Transactions().UpdateStatus(ctx, tx, domain.StatusCompleted); err != nil {
-		ts.log.ErrorContext(ctx, "ошибка обновления статуса транзакции", "err", err, "transaction_id", tx.ID)
-		return "", err
-	}
-
-	if err := uow.Transactions().CompleteIdempotency(ctx, sender_id, key, tx.ID); err != nil {
+	if err := uow.Transactions().CompleteIdempotency(ctx, command.SenderID, command.Key, tx.ID); err != nil {
 		ts.log.ErrorContext(ctx, "ошибка сохранения результа идемпотентности", "err", err, "transaction_id", tx.ID)
 		return "", err
 	}
@@ -142,12 +93,99 @@ func (ts *TransactionsService) Transfer(
 		return "", err
 	}
 
-	ts.log.InfoContext(ctx, "транзакция успешно завершена", "transaction_id", tx.ID, "sender_id", sender_id, "receiver_id", receiver_id, "amount", amount)
+	ts.log.InfoContext(ctx, "транзакция успешно завершена", "transaction_id", tx.ID, "sender_id", command.SenderID, "receiver_id", command.ReceiverID, "amount", command.Amount)
 	return tx.ID.String(), nil
 }
 
-func transferFingerprint(senderID, receiverID uuid.UUID, amount decimal.Decimal) string {
-	payload := transferOperationVersion + "\x00" + senderID.String() + "\x00" + receiverID.String() + "\x00" + amount.String()
+func (ts *TransactionsService) resolveIdempotency(
+	ctx context.Context,
+	repo domain.TransactionStorage,
+	command transferCommand,
+) (*uuid.UUID, error) {
+	record := &domain.TransferIdempotency{
+		SenderID:           command.SenderID,
+		Key:                command.Key,
+		RequestFingerprint: command.RequestFingerprint,
+	}
+	created, err := repo.TryCreateIdempotency(ctx, record)
+	if err != nil {
+		ts.log.ErrorContext(ctx, "ошибка резервирования Idempotency-Key", "err", err, "sender_id", command.SenderID)
+		return nil, err
+	}
+	if created {
+		return nil, nil
+	}
+
+	existing, err := repo.GetIdempotency(ctx, command.SenderID, command.Key)
+	if err != nil {
+		ts.log.ErrorContext(ctx, "ошибка получения результата идемпотентности", "err", err, "sender_id", command.SenderID)
+		return nil, err
+	}
+	if existing.RequestFingerprint != command.RequestFingerprint {
+		ts.log.WarnContext(ctx, "Idempotency-Key повторно использован с другим payload", "sender_id", command.SenderID)
+		return nil, domain.ErrIdempotencyConflict
+	}
+	if existing.Status != domain.IdempotencyStatusCompleted || existing.TransactionID == nil {
+		return nil, domain.ErrIdempotencyInProgress
+	}
+
+	ts.log.InfoContext(ctx, "возвращён результат повторного перевода", "transaction_id", *existing.TransactionID, "sender_id", command.SenderID)
+	return existing.TransactionID, nil
+}
+
+func (ts *TransactionsService) executeTransfer(
+	ctx context.Context,
+	uow domain.UnitOfWork,
+	command transferCommand,
+) (*domain.Transaction, error) {
+	sender, err := uow.Accounts().GetById(ctx, command.SenderID)
+	if err != nil {
+		ts.log.ErrorContext(ctx, "ошибка получения аккаунта отправителя", "err", err, "sender_id", command.SenderID)
+		return nil, err
+	}
+	receiver, err := uow.Accounts().GetById(ctx, command.ReceiverID)
+	if err != nil {
+		ts.log.ErrorContext(ctx, "ошибка получения аккаунта получателя", "err", err, "receiver_id", command.ReceiverID)
+		return nil, err
+	}
+
+	if sender.ID == receiver.ID {
+		ts.log.WarnContext(ctx, "попытка перевода на собственный счет", "sender_id", command.SenderID)
+		return nil, domain.ErrSameAccount
+	}
+	if !command.Amount.IsPositive() {
+		ts.log.WarnContext(ctx, "попытка перевода отрицательной суммы", "sender_id", command.SenderID, "amount", command.Amount)
+		return nil, domain.ErrInvalidAmount
+	}
+
+	if err := uow.Accounts().Sub(ctx, command.SenderID, command.Amount); err != nil {
+		ts.log.ErrorContext(ctx, "ошибка вычисления суммы со счета отправителя", "err", err, "sender_id", command.SenderID, "amount", command.Amount)
+		return nil, err
+	}
+	if err := uow.Accounts().Add(ctx, command.ReceiverID, command.Amount); err != nil {
+		ts.log.ErrorContext(ctx, "ошибка добавления суммы на счет получателя", "err", err, "receiver_id", command.ReceiverID, "amount", command.Amount)
+		return nil, err
+	}
+
+	tx, err := domain.NewTransaction(command.Amount, command.SenderID, command.ReceiverID)
+	if err != nil {
+		ts.log.ErrorContext(ctx, "ошибка создания объекта транзакции", "err", err, "sender_id", command.SenderID, "receiver_id", command.ReceiverID)
+		return nil, err
+	}
+	if err := uow.Transactions().Transaction(ctx, tx); err != nil {
+		ts.log.ErrorContext(ctx, "ошибка сохранения транзакции в БД", "err", err, "transaction_id", tx.ID)
+		return nil, err
+	}
+	if err := uow.Transactions().UpdateStatus(ctx, tx, domain.StatusCompleted); err != nil {
+		ts.log.ErrorContext(ctx, "ошибка обновления статуса транзакции", "err", err, "transaction_id", tx.ID)
+		return nil, err
+	}
+
+	return tx, nil
+}
+
+func transferFingerprint(command transferCommand) string {
+	payload := transferOperationVersion + "\x00" + command.SenderID.String() + "\x00" + command.ReceiverID.String() + "\x00" + command.Amount.String()
 	sum := sha256.Sum256([]byte(payload))
 	return hex.EncodeToString(sum[:])
 }

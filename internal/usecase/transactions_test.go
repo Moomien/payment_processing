@@ -55,7 +55,11 @@ func TestTransferReplayReturnsStoredResultBeforeRedis(t *testing.T) {
 		existing: domain.TransferIdempotency{
 			SenderID:           senderID,
 			Key:                "replay-key",
-			RequestFingerprint: transferFingerprint(senderID, receiverID, amount),
+			RequestFingerprint: transferFingerprint(transferCommand{
+				SenderID:   senderID,
+				ReceiverID: receiverID,
+				Amount:     amount,
+			}),
 			Status:             domain.IdempotencyStatusCompleted,
 			TransactionID:      &transactionID,
 		},
@@ -154,8 +158,8 @@ func TestTransferFingerprintCanonicalizesAmount(t *testing.T) {
 
 	assert.Equal(
 		t,
-		transferFingerprint(senderID, receiverID, plain),
-		transferFingerprint(senderID, receiverID, scientific),
+		transferFingerprint(transferCommand{SenderID: senderID, ReceiverID: receiverID, Amount: plain}),
+		transferFingerprint(transferCommand{SenderID: senderID, ReceiverID: receiverID, Amount: scientific}),
 	)
 }
 
