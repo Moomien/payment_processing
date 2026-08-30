@@ -32,6 +32,8 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+      seed:
+        condition: service_completed_successfully
     healthcheck:
       test:
         - CMD
@@ -64,6 +66,25 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    restart: "no"
+
+  seed:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: seeder
+    environment:
+      ENVIRONMENT: development
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB:-postgres_bd}
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secret}
+      POSTGRES_SSLMODE: disable
+      POSTGRES_MAX_CONNS: "10"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     restart: "no"
 
   postgres:

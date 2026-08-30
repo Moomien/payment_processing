@@ -134,6 +134,7 @@ func SetupTestServer(t *testing.T) *TestServer {
 
 	t.Cleanup(func() {
 		server.Close()
+		_ = testCache.Close()
 		db.Close()
 		if err := postgresContainer.Terminate(ctx); err != nil {
 			t.Logf("не удалось остановить postgres контейнер: %v", err)

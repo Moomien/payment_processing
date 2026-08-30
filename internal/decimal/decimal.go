@@ -9,6 +9,8 @@ import (
 	"strings"
 )
 
+const MaxAbsExponent = 1000
+
 var zeroInt = big.NewInt(0)
 var tenInt = big.NewInt(10)
 
@@ -88,11 +90,43 @@ func NewFromString(value string) (Decimal, error) {
 		// NOTE(vadim): I doubt a string could realistically be this long
 		return Decimal{}, fmt.Errorf("can't convert %s to decimal: fractional part too long", originalInput)
 	}
+	if exp < -MaxAbsExponent || exp > MaxAbsExponent {
+		return Decimal{}, fmt.Errorf("can't convert %s to decimal: exponent exceeds %d", originalInput, MaxAbsExponent)
+	}
 
 	return Decimal{
 		value: dValue,
 		exp:   int32(exp),
 	}, nil
+}
+
+// FitsNumeric reports whether d can be stored exactly in NUMERIC(precision, scale).
+// It avoids rendering the decimal, so exponent notation cannot trigger a large allocation.
+func (d Decimal) FitsNumeric(precision, scale int32) bool {
+	if precision <= 0 || scale < 0 || scale > precision {
+		return false
+	}
+	if d.Sign() == 0 {
+		return true
+	}
+
+	digits := new(big.Int).Abs(d.getValue()).String()
+	exp := d.exp
+	for len(digits) > 1 && exp < 0 && digits[len(digits)-1] == '0' {
+		digits = digits[:len(digits)-1]
+		exp++
+	}
+
+	fractionalDigits := int32(0)
+	if exp < 0 {
+		fractionalDigits = -exp
+	}
+	integerDigits := int32(len(digits)) + exp
+	if integerDigits < 0 {
+		integerDigits = 0
+	}
+
+	return fractionalDigits <= scale && integerDigits <= precision-scale
 }
 
 func (d Decimal) String() string {

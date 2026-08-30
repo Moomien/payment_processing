@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -53,15 +54,15 @@ func TestTransferReplayReturnsStoredResultBeforeRedis(t *testing.T) {
 	repo := &transferUnitTxRepo{
 		createIdempotency: false,
 		existing: domain.TransferIdempotency{
-			SenderID:           senderID,
-			Key:                "replay-key",
+			SenderID: senderID,
+			Key:      "replay-key",
 			RequestFingerprint: transferFingerprint(transferCommand{
 				SenderID:   senderID,
 				ReceiverID: receiverID,
 				Amount:     amount,
 			}),
-			Status:             domain.IdempotencyStatusCompleted,
-			TransactionID:      &transactionID,
+			Status:        domain.IdempotencyStatusCompleted,
+			TransactionID: &transactionID,
 		},
 	}
 	cache := &transferUnitCache{rateLimitErr: errors.New("redis unavailable")}
@@ -163,6 +164,43 @@ func TestTransferFingerprintCanonicalizesAmount(t *testing.T) {
 	)
 }
 
+func TestTransferRetriesPostgresConcurrencyFailureWithoutDoubleRateLimit(t *testing.T) {
+	senderID := uuid.MustParse("60000000-0000-0000-0000-000000000001")
+	receiverID := uuid.MustParse("60000000-0000-0000-0000-000000000002")
+	amount, err := decimal.NewFromString("25")
+	require.NoError(t, err)
+
+	failed := &transferUnitUOW{
+		accounts:     transferUnitAccounts(senderID, receiverID),
+		transactions: &transferUnitTxRepo{createIdempotency: true},
+		commitErr:    &pgconn.PgError{Code: "40P01", Message: "deadlock detected"},
+	}
+	success := &transferUnitUOW{
+		accounts:     transferUnitAccounts(senderID, receiverID),
+		transactions: &transferUnitTxRepo{createIdempotency: true},
+	}
+	cache := &transferUnitCache{}
+	service := newTransferUnitService(&transferUnitFactory{uows: []*transferUnitUOW{failed, success}}, cache)
+
+	transactionID, err := service.Transfer(context.Background(), senderID, receiverID, "retry-deadlock", amount)
+
+	require.NoError(t, err)
+	assert.NotEmpty(t, transactionID)
+	assert.True(t, failed.rolledBack)
+	assert.True(t, success.committed)
+	assert.Equal(t, 1, cache.rateLimitCalls)
+}
+
+func TestTransferRejectsAmountOutsideDatabaseNumericBeforeOpeningTransaction(t *testing.T) {
+	service := newTransferUnitService(&transferUnitFactory{}, &transferUnitCache{})
+	amount, err := decimal.NewFromString("1000000000000000000")
+	require.NoError(t, err)
+
+	_, err = service.Transfer(context.Background(), uuid.New(), uuid.New(), "too-large", amount)
+
+	require.ErrorIs(t, err, domain.ErrInvalidAmount)
+}
+
 func newTransferUnitService(factory domain.TxUOW, cache domain.Cache) *TransactionsService {
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	return NewTransactionsService(factory, cache, log)
@@ -207,6 +245,7 @@ type transferUnitUOW struct {
 	transactions domain.TransactionStorage
 	committed    bool
 	rolledBack   bool
+	commitErr    error
 }
 
 func (f *transferUnitUOW) Accounts() domain.AccountsStorage { return f.accounts }
@@ -215,6 +254,9 @@ func (f *transferUnitUOW) Transactions() domain.TransactionStorage {
 }
 func (*transferUnitUOW) Tokens() domain.TokenStorage { return nil }
 func (f *transferUnitUOW) Commit() error {
+	if f.commitErr != nil {
+		return f.commitErr
+	}
 	f.committed = true
 	return nil
 }
@@ -232,6 +274,9 @@ type transferUnitAccountRepo struct {
 }
 
 func (*transferUnitAccountRepo) Create(context.Context, *domain.Account) error { return nil }
+func (*transferUnitAccountRepo) LockForTransfer(context.Context, uuid.UUID, uuid.UUID) error {
+	return nil
+}
 func (f *transferUnitAccountRepo) GetById(_ context.Context, id uuid.UUID) (*domain.Account, error) {
 	account, ok := f.accounts[id]
 	if !ok {
@@ -252,15 +297,15 @@ func (f *transferUnitAccountRepo) Add(context.Context, uuid.UUID, decimal.Decima
 }
 
 type transferUnitTxRepo struct {
-	createIdempotency    bool
-	createIdempotencyErr error
-	reserved             domain.TransferIdempotency
-	existing             domain.TransferIdempotency
-	getIdempotencyErr    error
-	savedTransaction     *domain.Transaction
-	transactionErr       error
-	updateStatusErr      error
-	completeErr          error
+	createIdempotency      bool
+	createIdempotencyErr   error
+	reserved               domain.TransferIdempotency
+	existing               domain.TransferIdempotency
+	getIdempotencyErr      error
+	savedTransaction       *domain.Transaction
+	transactionErr         error
+	updateStatusErr        error
+	completeErr            error
 	completedTransactionID uuid.UUID
 }
 

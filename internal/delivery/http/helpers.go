@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -15,6 +16,26 @@ import (
 
 	"github.com/google/uuid"
 )
+
+const maxJSONBodyBytes = 64 << 10
+
+func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) error {
+	r.Body = http.MaxBytesReader(w, r.Body, maxJSONBodyBytes)
+	decoder := json.NewDecoder(r.Body)
+
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(dst); err != nil {
+		return err
+	}
+
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return errors.New("Тело запрос должно содержать ровно один json объект!")
+		}
+		return err
+	}
+	return nil
+}
 
 func newTransactionFilter(query url.Values) (*domain.TransactionFilter, error) {
 	senderID, err := parseUUID(query, "sender_id")

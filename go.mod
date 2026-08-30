@@ -1,6 +1,6 @@
 module processing
 
-go 1.25.7
+go 1.25.12
 
 require (
 	github.com/alicebob/miniredis/v2 v2.38.0

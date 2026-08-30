@@ -29,6 +29,7 @@ type TransactionStorage interface {
 
 type AccountsStorage interface {
 	Create(ctx context.Context, ac *Account) error
+	LockForTransfer(ctx context.Context, firstID, secondID uuid.UUID) error
 	GetById(ctx context.Context, id uuid.UUID) (*Account, error)
 	GetByEmail(ctx context.Context, email string) (*Account, error)
 	Sub(ctx context.Context, sender_id uuid.UUID, amount decimal.Decimal) error

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sync"
 	"testing"
 
 	"github.com/google/uuid"
@@ -141,6 +142,119 @@ func TestTransactionFlow(t *testing.T) {
 
 		assert.NotEqual(t, http.StatusCreated, resp.StatusCode)
 	})
+}
+
+func TestConcurrentTransfersPreserveMoneyAndIdempotency(t *testing.T) {
+	ts := SetupTestServer(t)
+	accountA := createTestUser(t, ts, "concurrent-a@example.com", "password123", "ConcurrentA")
+	accountB := createTestUser(t, ts, "concurrent-b@example.com", "password123", "ConcurrentB")
+	_, err := ts.DB.Exec("UPDATE accounts SET balance = 1000 WHERE id IN ($1, $2)", accountA.AccountID, accountB.AccountID)
+	require.NoError(t, err)
+
+	t.Run("parallel and opposing transfers", func(t *testing.T) {
+		const transfersEachWay = 12
+		errs := make(chan error, transfersEachWay*2)
+		var wg sync.WaitGroup
+		for i := 0; i < transfersEachWay; i++ {
+			for _, direction := range []struct {
+				sender   *TestUser
+				receiver *TestUser
+				key      string
+			}{
+				{sender: accountA, receiver: accountB, key: fmt.Sprintf("opposing-a-b-%d", i)},
+				{sender: accountB, receiver: accountA, key: fmt.Sprintf("opposing-b-a-%d", i)},
+			} {
+				wg.Add(1)
+				go func(direction struct {
+					sender   *TestUser
+					receiver *TestUser
+					key      string
+				}) {
+					defer wg.Done()
+					_, status, err := postTransfer(ts, direction.sender, direction.receiver.AccountID, "10.00", direction.key)
+					if err == nil && status != http.StatusCreated {
+						err = fmt.Errorf("unexpected transfer status %d", status)
+					}
+					errs <- err
+				}(direction)
+			}
+		}
+		wg.Wait()
+		close(errs)
+		for err := range errs {
+			require.NoError(t, err)
+		}
+		assertTotalBalance(t, ts, "2000")
+	})
+
+	t.Run("same idempotency key is charged once", func(t *testing.T) {
+		const repeats = 8
+		ids := make(chan string, repeats)
+		errs := make(chan error, repeats)
+		var wg sync.WaitGroup
+		for i := 0; i < repeats; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				id, status, err := postTransfer(ts, accountA, accountB.AccountID, "5.00", "parallel-same-key")
+				if err == nil && status != http.StatusCreated {
+					err = fmt.Errorf("unexpected replay status %d", status)
+				}
+				ids <- id
+				errs <- err
+			}()
+		}
+		wg.Wait()
+		close(ids)
+		close(errs)
+		for err := range errs {
+			require.NoError(t, err)
+		}
+		var transactionID string
+		for id := range ids {
+			if transactionID == "" {
+				transactionID = id
+			}
+			assert.Equal(t, transactionID, id)
+		}
+		var count int
+		require.NoError(t, ts.DB.QueryRow("SELECT COUNT(*) FROM transactions WHERE id = $1", transactionID).Scan(&count))
+		assert.Equal(t, 1, count)
+		assertTotalBalance(t, ts, "2000")
+	})
+}
+
+func postTransfer(ts *TestServer, sender *TestUser, receiverID, amount, key string) (string, int, error) {
+	body, err := json.Marshal(map[string]string{"receiver_id": receiverID, "amount": amount})
+	if err != nil {
+		return "", 0, err
+	}
+	req, err := http.NewRequest(http.MethodPost, ts.Server.URL+"/transactions", bytes.NewReader(body))
+	if err != nil {
+		return "", 0, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+sender.AccessToken)
+	req.Header.Set("Idempotency-Key", key)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", 0, err
+	}
+	defer resp.Body.Close()
+	var result struct {
+		TransactionID string `json:"transaction_id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", resp.StatusCode, err
+	}
+	return result.TransactionID, resp.StatusCode, nil
+}
+
+func assertTotalBalance(t *testing.T, ts *TestServer, expected string) {
+	t.Helper()
+	var conserved bool
+	require.NoError(t, ts.DB.QueryRow("SELECT SUM(balance) = $1::numeric FROM accounts", expected).Scan(&conserved))
+	assert.True(t, conserved)
 }
 
 func TestGetTransaction(t *testing.T) {

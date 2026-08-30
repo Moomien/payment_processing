@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 	"processing/internal/delivery/http/requestctx"
@@ -21,7 +20,7 @@ func (h *handler) Register(w http.ResponseWriter, r *http.Request) {
 	ip := clientIP(r)
 
 	var dto AuthDTO
-	if err := json.NewDecoder(r.Body).Decode(&dto); err != nil {
+	if err := decodeJSON(w, r, &dto); err != nil {
 		writeError(w, http.StatusBadRequest, err, 0)
 		return
 	}
@@ -54,7 +53,7 @@ func (h *handler) Login(w http.ResponseWriter, r *http.Request) {
 	ip := clientIP(r)
 
 	var dto AuthDTO
-	if err := json.NewDecoder(r.Body).Decode(&dto); err != nil {
+	if err := decodeJSON(w, r, &dto); err != nil {
 		writeError(w, http.StatusBadRequest, err, 0)
 		return
 	}
@@ -83,9 +82,11 @@ func (h *handler) Refresh(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			RefreshToken string `json:"refresh_token"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err == nil {
-			refreshToken = req.RefreshToken
+		if err := decodeJSON(w, r, &req); err != nil {
+			writeError(w, http.StatusBadRequest, errors.New("refresh token отсутствует"), 1)
+			return
 		}
+		refreshToken = req.RefreshToken
 	}
 	ip := clientIP(r)
 	if refreshToken == "" {
@@ -117,7 +118,7 @@ func (h *handler) Logout(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			RefreshToken string `json:"refresh_token"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		if err := decodeJSON(w, r, &req); err != nil {
 			writeError(w, http.StatusBadRequest, errors.New("refresh token отсутствует"), 0)
 			return
 		}

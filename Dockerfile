@@ -24,6 +24,12 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
     -o /out/migrate \
     ./cmd/migrate
 
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -trimpath \
+    -ldflags="-s -w" \
+    -o /out/seed \
+    ./cmd/seed
+
 FROM alpine:${ALPINE_VERSION} AS runtime-base
 
 RUN apk add --no-cache ca-certificates tzdata \
@@ -40,6 +46,12 @@ COPY --from=builder --chown=app:app /out/migrate /app/migrate
 COPY --chown=app:app migrations /app/migrations
 
 ENTRYPOINT ["/app/migrate"]
+
+FROM runtime-base AS seeder
+
+COPY --from=builder --chown=app:app /out/seed /app/seed
+
+ENTRYPOINT ["/app/seed"]
 
 FROM runtime-base AS app
 

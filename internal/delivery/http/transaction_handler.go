@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 	"processing/internal/decimal"
@@ -42,7 +41,7 @@ func (h *handler) Transfer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var dto transferDTO
-	if err := json.NewDecoder(r.Body).Decode(&dto); err != nil {
+	if err := decodeJSON(w, r, &dto); err != nil {
 		writeError(w, 400, err, 0)
 		return
 	}

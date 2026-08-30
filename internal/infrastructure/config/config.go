@@ -39,10 +39,12 @@ type Config struct {
 }
 
 type HTTPConfig struct {
-	Port            string
-	ReadTimeout     time.Duration
-	WriteTimeout    time.Duration
-	ShutdownTimeout time.Duration
+	Port              string
+	ReadHeaderTimeout time.Duration
+	ReadTimeout       time.Duration
+	WriteTimeout      time.Duration
+	IdleTimeout       time.Duration
+	ShutdownTimeout   time.Duration
 }
 
 type JWTConfig struct {
@@ -54,13 +56,16 @@ type JWTConfig struct {
 }
 
 type PostgresConfig struct {
-	HOST     string
-	PORT     string
-	DBNAME   string
-	USER     string
-	PASSWORD string
-	SSLMODE  string
-	MaxConns int
+	HOST            string
+	PORT            string
+	DBNAME          string
+	USER            string
+	PASSWORD        string
+	SSLMODE         string
+	MaxConns        int
+	MaxIdleConns    int
+	ConnMaxLifetime time.Duration
+	ConnMaxIdleTime time.Duration
 }
 
 type RedisConfig struct {
@@ -91,10 +96,12 @@ func Load() (*Config, error) {
 	}
 
 	cfg.HTTP = HTTPConfig{
-		Port:            getEnv("HTTP_PORT", "8080"),
-		ReadTimeout:     getEnvAsDuration("HTTP_READ_TIMEOUT", 10*time.Second),
-		WriteTimeout:    getEnvAsDuration("HTTP_WRITE_TIMEOUT", 15*time.Second),
-		ShutdownTimeout: getEnvAsDuration("HTTP_SHUTDOWN_TIMEOUT", 10*time.Second),
+		Port:              getEnv("HTTP_PORT", "8080"),
+		ReadHeaderTimeout: getEnvAsDuration("HTTP_READ_HEADER_TIMEOUT", 5*time.Second),
+		ReadTimeout:       getEnvAsDuration("HTTP_READ_TIMEOUT", 10*time.Second),
+		WriteTimeout:      getEnvAsDuration("HTTP_WRITE_TIMEOUT", 15*time.Second),
+		IdleTimeout:       getEnvAsDuration("HTTP_IDLE_TIMEOUT", 60*time.Second),
+		ShutdownTimeout:   getEnvAsDuration("HTTP_SHUTDOWN_TIMEOUT", 10*time.Second),
 	}
 
 	cfg.Postgres = loadPostgresConfig()
@@ -141,13 +148,16 @@ func LoadPostgres() (PostgresConfig, error) {
 
 func loadPostgresConfig() PostgresConfig {
 	return PostgresConfig{
-		HOST:     getEnv("POSTGRES_HOST", "localhost"),
-		PORT:     getEnv("POSTGRES_PORT", "5432"),
-		DBNAME:   getEnv("POSTGRES_DB", ""),
-		USER:     getEnv("POSTGRES_USER", ""),
-		PASSWORD: getEnv("POSTGRES_PASSWORD", ""),
-		SSLMODE:  getEnv("POSTGRES_SSLMODE", SSLModeRequire),
-		MaxConns: int(getEnvAsInt("POSTGRES_MAX_CONNS", 10)),
+		HOST:            getEnv("POSTGRES_HOST", "localhost"),
+		PORT:            getEnv("POSTGRES_PORT", "5432"),
+		DBNAME:          getEnv("POSTGRES_DB", ""),
+		USER:            getEnv("POSTGRES_USER", ""),
+		PASSWORD:        getEnv("POSTGRES_PASSWORD", ""),
+		SSLMODE:         getEnv("POSTGRES_SSLMODE", SSLModeRequire),
+		MaxConns:        int(getEnvAsInt("POSTGRES_MAX_CONNS", 10)),
+		MaxIdleConns:    int(getEnvAsInt("POSTGRES_MAX_IDLE_CONNS", 5)),
+		ConnMaxLifetime: getEnvAsDuration("POSTGRES_CONN_MAX_LIFETIME", 30*time.Minute),
+		ConnMaxIdleTime: getEnvAsDuration("POSTGRES_CONN_MAX_IDLE_TIME", 5*time.Minute),
 	}
 }
 
@@ -185,6 +195,9 @@ func (c *Config) Validate() error {
 	if c.JWT.AccessTTL >= c.JWT.RefreshTTL {
 		errs = append(errs, errors.New("ACCESS_TOKEN_TTL должен быть меньше REFRESH_TOKEN_TTL"))
 	}
+	if c.HTTP.ReadHeaderTimeout <= 0 || c.HTTP.ReadTimeout <= 0 || c.HTTP.WriteTimeout <= 0 || c.HTTP.IdleTimeout <= 0 || c.HTTP.ShutdownTimeout <= 0 {
+		errs = append(errs, errors.New("HTTP_*_TIMEOUT: all timeouts must be positive"))
+	}
 
 	if c.Ratelimit.PerMinute <= 0 || c.Ratelimit.PerHour <= 0 || c.Ratelimit.PerDay <= 0 {
 		errs = append(errs, errors.New("RATE_LIMIT_*: все лимиты должны быть положительными"))
@@ -218,6 +231,12 @@ func (c PostgresConfig) Validate() error {
 	}
 	if c.MaxConns <= 0 {
 		errs = append(errs, errors.New("POSTGRES_MAX_CONNS: должен быть больше нуля"))
+	}
+	if c.MaxIdleConns < 0 || c.MaxIdleConns > c.MaxConns {
+		errs = append(errs, errors.New("POSTGRES_MAX_IDLE_CONNS must be between zero and POSTGRES_MAX_CONNS"))
+	}
+	if c.ConnMaxLifetime <= 0 || c.ConnMaxIdleTime <= 0 {
+		errs = append(errs, errors.New("POSTGRES_CONN_MAX_* durations must be positive"))
 	}
 	return errors.Join(errs...)
 }

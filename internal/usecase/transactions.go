@@ -4,15 +4,24 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"log/slog"
 	"processing/internal/decimal"
 	"processing/internal/domain"
 	"processing/internal/infrastructure/logger"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
-const transferOperationVersion = "transfer:v1"
+const (
+	transferOperationVersion = "transfer:v1"
+	transferMaxAttempts      = 3
+	transferRetryBaseDelay   = 25 * time.Millisecond
+	moneyPrecision           = 36
+	moneyScale               = 18
+)
 
 type transferCommand struct {
 	SenderID           uuid.UUID
@@ -48,6 +57,9 @@ func (ts *TransactionsService) Transfer(
 	if err := domain.ValidateIdempotencyKey(key); err != nil {
 		return "", err
 	}
+	if !amount.IsPositive() || !amount.FitsNumeric(moneyPrecision, moneyScale) {
+		return "", domain.ErrInvalidAmount
+	}
 
 	command := transferCommand{
 		SenderID:   sender_id,
@@ -57,6 +69,30 @@ func (ts *TransactionsService) Transfer(
 	}
 	command.RequestFingerprint = transferFingerprint(command)
 
+	rateLimitChecked := false
+	for attempt := 1; attempt <= transferMaxAttempts; attempt++ {
+		transactionID, err := ts.transferAttempt(ctx, command, &rateLimitChecked)
+		if err == nil {
+			return transactionID, nil
+		}
+		if !isRetryablePostgresError(err) || attempt == transferMaxAttempts {
+			return "", err
+		}
+
+		delay := time.Duration(attempt) * transferRetryBaseDelay
+		ts.log.WarnContext(ctx, "retrying transfer after PostgreSQL concurrency error", "attempt", attempt, "delay", delay, "err", err)
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return "", ctx.Err()
+		case <-timer.C:
+		}
+	}
+	return "", errors.New("transfer retry loop exhausted")
+}
+
+func (ts *TransactionsService) transferAttempt(ctx context.Context, command transferCommand, rateLimitChecked *bool) (string, error) {
 	uow, err := ts.tx.NewTX(ctx)
 	if err != nil {
 		ts.log.ErrorContext(ctx, "ошибка создания транзакции БД", "err", err)
@@ -73,9 +109,12 @@ func (ts *TransactionsService) Transfer(
 		return replayID.String(), nil
 	}
 
-	if err := ts.cache.CheckRateLimit(ctx, command.SenderID.String()); err != nil {
-		ts.log.WarnContext(ctx, "превышен лимит запросов при переводе", "sender_id", command.SenderID)
-		return "", err
+	if !*rateLimitChecked {
+		if err := ts.cache.CheckRateLimit(ctx, command.SenderID.String()); err != nil {
+			ts.log.WarnContext(ctx, "transfer rate limit rejected", "sender_id", command.SenderID)
+			return "", err
+		}
+		*rateLimitChecked = true
 	}
 
 	tx, err := ts.executeTransfer(ctx, uow, command)
@@ -95,6 +134,14 @@ func (ts *TransactionsService) Transfer(
 
 	ts.log.InfoContext(ctx, "транзакция успешно завершена", "transaction_id", tx.ID, "sender_id", command.SenderID, "receiver_id", command.ReceiverID, "amount", command.Amount)
 	return tx.ID.String(), nil
+}
+
+func isRetryablePostgresError(err error) bool {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) {
+		return false
+	}
+	return pgErr.Code == "40001" || pgErr.Code == "40P01"
 }
 
 func (ts *TransactionsService) resolveIdempotency(
@@ -138,6 +185,16 @@ func (ts *TransactionsService) executeTransfer(
 	uow domain.UnitOfWork,
 	command transferCommand,
 ) (*domain.Transaction, error) {
+	if command.SenderID == command.ReceiverID {
+		return nil, domain.ErrSameAccount
+	}
+	if !command.Amount.IsPositive() || !command.Amount.FitsNumeric(moneyPrecision, moneyScale) {
+		return nil, domain.ErrInvalidAmount
+	}
+	if err := uow.Accounts().LockForTransfer(ctx, command.SenderID, command.ReceiverID); err != nil {
+		return nil, err
+	}
+
 	sender, err := uow.Accounts().GetById(ctx, command.SenderID)
 	if err != nil {
 		ts.log.ErrorContext(ctx, "ошибка получения аккаунта отправителя", "err", err, "sender_id", command.SenderID)

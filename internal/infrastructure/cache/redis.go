@@ -47,6 +47,7 @@ type NewRedisOptions struct {
 	Addr          string
 	Username      string
 	Password      string
+	DB            int
 	RateLimitMin  int64
 	RateLimitHour int64
 	RateLimitDay  int64
@@ -57,6 +58,7 @@ func NewRedis(opts NewRedisOptions) *Redis {
 		Addr:     opts.Addr,
 		Username: opts.Username,
 		Password: opts.Password,
+		DB:       opts.DB,
 	})
 	return &Redis{
 		client:        c,
@@ -64,6 +66,14 @@ func NewRedis(opts NewRedisOptions) *Redis {
 		rateLimitHour: opts.RateLimitHour,
 		rateLimitDay:  opts.RateLimitDay,
 	}
+}
+
+func (redis *Redis) Ping(ctx context.Context) error {
+	return redis.client.Ping(ctx).Err()
+}
+
+func (redis *Redis) Close() error {
+	return redis.client.Close()
 }
 
 // IdempotencyCheck добавляет идемпотентности операции, проверяет не был ли уже такой запрос от ключа

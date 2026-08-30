@@ -55,7 +55,7 @@ func NewUoWFactory(db *sql.DB) domain.TxUOW {
 
 // NewTX создает новую транзакцию базы данных
 func (u *uowFactory) NewTX(ctx context.Context) (domain.UnitOfWork, error) {
-	tx, err := u.db.BeginTx(ctx, nil)
+	tx, err := u.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if err != nil {
 		return nil, fmt.Errorf("tx begin: %w", err)
 	}
@@ -173,6 +173,31 @@ func (s *txRepo) UpdateStatus(ctx context.Context, tx *domain.Transaction, statu
 	`
 	if err := s.tx.QueryRowContext(ctx, query, status, tx.ID).Scan(&tx.Status, &tx.Created_at); err != nil {
 		return fmt.Errorf("обновление статуса транзакции: %w", err)
+	}
+	return nil
+}
+
+func (s *accountRepo) LockForTransfer(ctx context.Context, firstID, secondID uuid.UUID) error {
+	rows, err := s.tx.QueryContext(ctx, `
+		SELECT id
+		FROM accounts
+		WHERE id IN ($1, $2)
+		ORDER BY id
+		FOR UPDATE
+	`, firstID, secondID)
+	if err != nil {
+		return fmt.Errorf("lock transfer accounts: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return fmt.Errorf("scan locked account: %w", err)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate locked accounts: %w", err)
 	}
 	return nil
 }

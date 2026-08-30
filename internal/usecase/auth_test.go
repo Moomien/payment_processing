@@ -390,6 +390,7 @@ func (fakeTransactionStorage) Transaction(context.Context, *domain.Transaction) 
 func (fakeTransactionStorage) UpdateStatus(context.Context, *domain.Transaction, domain.TransactionStatus) error {
 	return nil
 }
+func (*fakeAccounts) LockForTransfer(context.Context, uuid.UUID, uuid.UUID) error { return nil }
 func (fakeTransactionStorage) TryCreateIdempotency(context.Context, *domain.TransferIdempotency) (bool, error) {
 	return false, nil
 }
