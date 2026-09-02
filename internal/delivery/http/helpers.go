@@ -111,20 +111,27 @@ func parseTime(query url.Values, key string) (time.Time, error) {
 func status(id int) string {
 	m := map[int]string{
 		200: "OK",
-		400: "StatusBadRequest",
+		400: "Bad Request",
 		401: "Unauthorized",
 		403: "Forbidden",
-		404: "StatusNotFound",
-		429: "too many requests",
-		500: "internal server error",
+		404: "Not Found",
+		409: "Conflict",
+		422: "Unprocessable Entity",
+		429: "Too Many Requests",
+		500: "Internal Server Error",
 	}
 	value, _ := m[id]
 	return value
 }
 
 // writeError пишет ошибку клиенту.
-// flag:  1 - полная ошибка, любой другой - только часть
-func writeError(w http.ResponseWriter, code int, err error, flag int) {
+// flag:  1 - полная ошибка, 0 - только часть
+func writeError(
+	w http.ResponseWriter,
+	code int,
+	err error,
+	flag int,
+) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 
@@ -140,14 +147,18 @@ func writeError(w http.ResponseWriter, code int, err error, flag int) {
 
 func writeAuthError(w http.ResponseWriter, err error) {
 	switch {
+	//rate limit
 	case errors.Is(err, domain.ErrRateLimited):
 		writeError(w, http.StatusTooManyRequests, err, 0)
+	//аккаунт уже есть
 	case errors.Is(err, domain.ErrAccountAlreadyExist):
 		writeError(w, http.StatusConflict, err, 0)
+	//невалидные данные
 	case errors.Is(err, domain.ErrInvalidEmail),
 		errors.Is(err, domain.ErrInvalidPassword),
 		errors.Is(err, domain.ErrInvalidName):
 		writeError(w, http.StatusUnprocessableEntity, err, 0)
+	//невалидные креды
 	case errors.Is(err, domain.ErrInvalidCredentials),
 		errors.Is(err, domain.ErrInvalidRefreshToken),
 		errors.Is(err, domain.ErrRefreshTokenExpired),
@@ -180,7 +191,13 @@ func writeJSON(w http.ResponseWriter, code int, v any) error {
 	return err
 }
 
-func setAuthCookie(w http.ResponseWriter, path, name, token string, maxage int) {
+func setAuthCookie(
+	w http.ResponseWriter,
+	path,
+	name,
+	token string,
+	maxage int,
+) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     name,
 		Value:    token,

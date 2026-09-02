@@ -82,9 +82,11 @@ func (as *AuthService) Register(ctx context.Context, email, password, name, ip s
 		Balance:      decimal.Zero(),
 		Role:         domain.RoleUser,
 	}
+
 	if err := uow.Accounts().Create(ctx, account); err != nil {
 		return nil, fmt.Errorf("создание аккаунта: %w", err)
 	}
+
 	if err := uow.Commit(); err != nil {
 		return nil, fmt.Errorf("коммит регистрации: %w", err)
 	}
