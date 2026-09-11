@@ -1,31 +1,139 @@
 services:
-  postgres:
-    image: postgres:16
-    container_name: postgres_bd
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: app
     environment:
-      POSTGRES_DB: postgres_bd
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: secret
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB:-postgres_bd}
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secret}
+      POSTGRES_SSLMODE: disable
+      POSTGRES_MAX_CONNS: "10"
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_USER: ""
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-60}
+      RATE_LIMIT_PER_HOUR: ${RATE_LIMIT_PER_HOUR:-1000}
+      RATE_LIMIT_PER_DAY: ${RATE_LIMIT_PER_DAY:-10000}
+      ACCESS_TOKEN_SECRET: ${ACCESS_TOKEN_SECRET:-development-access-secret-change-me}
+      REFRESH_TOKEN_SECRET: ${REFRESH_TOKEN_SECRET:-development-refresh-secret-change-me}
     ports:
-      - "5432:5432"
+      - "${APP_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      seed:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - -q
+        - -O
+        - /dev/null
+        - http://127.0.0.1:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    init: true
+    restart: unless-stopped
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: migrator
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB:-postgres_bd}
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secret}
+      POSTGRES_SSLMODE: disable
+      POSTGRES_MAX_CONNS: "10"
+      MIGRATIONS_DIR: /app/migrations
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  seed:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: seeder
+    environment:
+      ENVIRONMENT: development
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB:-postgres_bd}
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secret}
+      POSTGRES_SSLMODE: disable
+      POSTGRES_MAX_CONNS: "10"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: "no"
+
+  postgres:
+    image: postgres:16.14-alpine3.23
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-postgres_bd}
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secret}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
 
   redis:
-    image: redis:latest
+    image: redis:7.4.10-alpine3.21
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    command:
+      - /bin/sh
+      - -c
+      - |
+        if [ -n "$${REDIS_PASSWORD}" ]; then
+          exec redis-server --appendonly yes --requirepass "$${REDIS_PASSWORD}"
+        else
+          exec redis-server --appendonly yes
+        fi
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
-    
-  kafka:
-    image: apache/kafka:latest
-    ports:
-      - "9092:9092"
-    volumes:
-      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - if [ -n "$${REDIS_PASSWORD}" ]; then redis-cli --no-auth-warning -a "$${REDIS_PASSWORD}" ping; else redis-cli ping; fi
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 3s
+    restart: unless-stopped
 
 volumes:
   postgres_data:
   redis_data:
-  kafka_data:

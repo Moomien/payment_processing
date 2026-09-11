@@ -1,4 +1,4 @@
-package handlers
+package request
 
 import (
 	"fmt"
@@ -10,7 +10,7 @@ import (
 	"github.com/google/uuid"
 )
 
-func newTransactionFilter(query url.Values) (*domain.TransactionFilter, error) {
+func NewTransactionFilter(query url.Values) (*domain.TransactionFilter, error) {
 	senderID, err := parseUUID(query, "sender_id")
 	if err != nil {
 		return nil, err
@@ -68,9 +68,14 @@ func parseUUID(query url.Values, key string) (uuid.UUID, error) {
 }
 
 func parseTime(query url.Values, key string) (time.Time, error) {
-	t, err := time.Parse("2006-01-02", query.Get(key))
+	val := query.Get(key)
+	if val == "" {
+		return time.Time{}, nil
+	}
+
+	t, err := time.Parse("2006-01-02", val)
 	if err != nil {
-		return time.Time{}, err
+		return time.Time{}, fmt.Errorf("невалидная дата %s: %w", key, err)
 	}
 
 	return t, nil
