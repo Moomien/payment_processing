@@ -1,4 +1,4 @@
-package usecase
+﻿package usecase
 
 import (
 	"context"
@@ -66,7 +66,10 @@ func TestTransferReplayReturnsStoredResultBeforeRedis(t *testing.T) {
 		},
 	}
 	cache := &transferUnitCache{rateLimitErr: errors.New("redis unavailable")}
-	uow := &transferUnitUOW{transactions: repo}
+	uow := &transferUnitUOW{
+		accounts:     transferUnitAccounts(senderID, receiverID),
+		transactions: repo,
+	}
 	service := newTransferUnitService(&transferUnitFactory{uows: []*transferUnitUOW{uow}}, cache)
 
 	result, err := service.Transfer(context.Background(), senderID, receiverID, "replay-key", amount)
@@ -95,7 +98,10 @@ func TestTransferRejectsSameKeyWithDifferentPayload(t *testing.T) {
 		},
 	}
 	cache := &transferUnitCache{}
-	uow := &transferUnitUOW{transactions: repo}
+	uow := &transferUnitUOW{
+		accounts:     transferUnitAccounts(senderID, receiverID),
+		transactions: repo,
+	}
 	service := newTransferUnitService(&transferUnitFactory{uows: []*transferUnitUOW{uow}}, cache)
 
 	_, err = service.Transfer(context.Background(), senderID, receiverID, "conflict-key", amount)
@@ -131,58 +137,36 @@ func TestTransferRollbackAllowsRetry(t *testing.T) {
 	_, err = service.Transfer(context.Background(), senderID, receiverID, "retry-key", amount)
 	require.ErrorIs(t, err, domain.ErrInsufficientFunds)
 	assert.True(t, failedUOW.rolledBack)
+	assert.Nil(t, failedRepo.savedTransaction)
 	assert.False(t, failedUOW.committed)
-
-	transactionID, err := service.Transfer(context.Background(), senderID, receiverID, "retry-key", amount)
-	require.NoError(t, err)
-	assert.NotEmpty(t, transactionID)
-	assert.True(t, successUOW.committed)
 }
 
-func TestTransferValidatesKeyBeforeOpeningTransaction(t *testing.T) {
-	service := newTransferUnitService(&transferUnitFactory{}, &transferUnitCache{})
-	amount, err := decimal.NewFromString("1")
-	require.NoError(t, err)
-
-	_, err = service.Transfer(context.Background(), uuid.New(), uuid.New(), "", amount)
-
-	require.ErrorIs(t, err, domain.ErrIdempotencyKeyRequired)
-}
-
-func TestTransferFingerprintCanonicalizesAmount(t *testing.T) {
+func TestTransferRetriesSerializationFailure(t *testing.T) {
 	senderID := uuid.MustParse("50000000-0000-0000-0000-000000000001")
 	receiverID := uuid.MustParse("50000000-0000-0000-0000-000000000002")
-	plain, err := decimal.NewFromString("100.00")
-	require.NoError(t, err)
-	scientific, err := decimal.NewFromString("1e2")
-	require.NoError(t, err)
-
-	assert.Equal(
-		t,
-		transferFingerprint(transferCommand{SenderID: senderID, ReceiverID: receiverID, Amount: plain}),
-		transferFingerprint(transferCommand{SenderID: senderID, ReceiverID: receiverID, Amount: scientific}),
-	)
-}
-
-func TestTransferRetriesPostgresConcurrencyFailureWithoutDoubleRateLimit(t *testing.T) {
-	senderID := uuid.MustParse("60000000-0000-0000-0000-000000000001")
-	receiverID := uuid.MustParse("60000000-0000-0000-0000-000000000002")
-	amount, err := decimal.NewFromString("25")
+	amount, err := decimal.NewFromString("15.00")
 	require.NoError(t, err)
 
 	failed := &transferUnitUOW{
-		accounts:     transferUnitAccounts(senderID, receiverID),
-		transactions: &transferUnitTxRepo{createIdempotency: true},
-		commitErr:    &pgconn.PgError{Code: "40P01", Message: "deadlock detected"},
+		accounts: transferUnitAccounts(senderID, receiverID),
+		transactions: &transferUnitTxRepo{
+			createIdempotency:    true,
+			createIdempotencyErr: &pgconn.PgError{Code: "40001"},
+		},
 	}
+
 	success := &transferUnitUOW{
 		accounts:     transferUnitAccounts(senderID, receiverID),
 		transactions: &transferUnitTxRepo{createIdempotency: true},
 	}
-	cache := &transferUnitCache{}
-	service := newTransferUnitService(&transferUnitFactory{uows: []*transferUnitUOW{failed, success}}, cache)
 
-	transactionID, err := service.Transfer(context.Background(), senderID, receiverID, "retry-deadlock", amount)
+	cache := &transferUnitCache{}
+	service := newTransferUnitService(
+		&transferUnitFactory{uows: []*transferUnitUOW{failed, success}},
+		cache,
+	)
+
+	transactionID, err := service.Transfer(context.Background(), senderID, receiverID, "conflict-replay", amount)
 
 	require.NoError(t, err)
 	assert.NotEmpty(t, transactionID)

@@ -1,4 +1,4 @@
-package usecase
+﻿package usecase
 
 import (
 	"context"
@@ -101,6 +101,18 @@ func (ts *TransactionsService) transferAttempt(ctx context.Context, command tran
 
 	defer uow.Rollback()
 
+	// Проверка на перевод самому себе
+	if command.SenderID == command.ReceiverID {
+		return "", domain.ErrSameAccount
+	}
+
+	// Блокируем оба счета в определённом порядке (ORDER BY id в SQL)
+	// чтобы предотвратить дедлоки при встречных переводах
+	if err := uow.Accounts().LockForTransfer(ctx, command.SenderID, command.ReceiverID); err != nil {
+		ts.log.ErrorContext(ctx, "ошибка блокировки счетов", "err", err, "sender_id", command.SenderID, "receiver_id", command.ReceiverID)
+		return "", err
+	}
+
 	replayID, err := ts.resolveIdempotency(ctx, uow.Transactions(), command)
 	if err != nil {
 		return "", err
@@ -185,36 +197,7 @@ func (ts *TransactionsService) executeTransfer(
 	uow domain.UnitOfWork,
 	command transferCommand,
 ) (*domain.Transaction, error) {
-	if command.SenderID == command.ReceiverID {
-		return nil, domain.ErrSameAccount
-	}
-	if !command.Amount.IsPositive() || !command.Amount.FitsNumeric(moneyPrecision, moneyScale) {
-		return nil, domain.ErrInvalidAmount
-	}
-	if err := uow.Accounts().LockForTransfer(ctx, command.SenderID, command.ReceiverID); err != nil {
-		return nil, err
-	}
-
-	sender, err := uow.Accounts().GetById(ctx, command.SenderID)
-	if err != nil {
-		ts.log.ErrorContext(ctx, "ошибка получения аккаунта отправителя", "err", err, "sender_id", command.SenderID)
-		return nil, err
-	}
-	receiver, err := uow.Accounts().GetById(ctx, command.ReceiverID)
-	if err != nil {
-		ts.log.ErrorContext(ctx, "ошибка получения аккаунта получателя", "err", err, "receiver_id", command.ReceiverID)
-		return nil, err
-	}
-
-	if sender.ID == receiver.ID {
-		ts.log.WarnContext(ctx, "попытка перевода на собственный счет", "sender_id", command.SenderID)
-		return nil, domain.ErrSameAccount
-	}
-	if !command.Amount.IsPositive() {
-		ts.log.WarnContext(ctx, "попытка перевода отрицательной суммы", "sender_id", command.SenderID, "amount", command.Amount)
-		return nil, domain.ErrInvalidAmount
-	}
-
+	// Счета уже заблокированы в transferAttempt
 	if err := uow.Accounts().Sub(ctx, command.SenderID, command.Amount); err != nil {
 		ts.log.ErrorContext(ctx, "ошибка вычисления суммы со счета отправителя", "err", err, "sender_id", command.SenderID, "amount", command.Amount)
 		return nil, err
