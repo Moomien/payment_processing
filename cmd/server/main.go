@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	app "processing/internal/app"
+	app "processing/internal/pkg/app"
 )
 
 func main() {

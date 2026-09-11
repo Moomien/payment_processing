@@ -1,7 +1,7 @@
 POSTGRES_PORT ?= 5432
 DB_URL ?= postgres://admin:secret@localhost:$(POSTGRES_PORT)/postgres_bd?sslmode=disable
 
-.PHONY: run stop test lint e2e compose-up compose-down docker-up docker-down migrate-up migrate-down
+.PHONY: run stop test lint e2e ci-local compose-up compose-down docker-up docker-down migrate-up migrate-down
 
 run:
 	go run ./cmd/server
@@ -11,19 +11,6 @@ stop:
 
 test:
 	go test ./internal/...
-
-
-## Все эндпоинты: 
-	// GET /health
-	// GET /health/live
-	// GET /health/ready
-	// POST /auth/register
-	// POST /auth/login
-	// POST /auth/refresh
-	// POST /auth/logout
-	// POST /auth/logout-all
-	// GET /accounts/{id}
-	// GET /accounts/{id}/transactions
 
 api-test:
 	make api-health-test
@@ -43,6 +30,8 @@ api-accounts-test:
 
 lint:
 	go vet ./...
+
+ci-local: lint test e2e
 
 e2e:
 	go test -count=1 ./e2e/...
