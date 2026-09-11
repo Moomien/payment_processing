@@ -1,25 +1,19 @@
-package handlers
+package httputil
 
 import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"net/http"
-	"net/url"
 	"processing/internal/domain"
-	"strconv"
 	"strings"
-	"time"
-
-	"github.com/google/uuid"
 )
 
 const maxJSONBodyBytes = 64 << 10
 
-func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) error {
+func DecodeJSON(w http.ResponseWriter, r *http.Request, dst any) error {
 	r.Body = http.MaxBytesReader(w, r.Body, maxJSONBodyBytes)
 	decoder := json.NewDecoder(r.Body)
 
@@ -35,77 +29,6 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) error {
 		return err
 	}
 	return nil
-}
-
-func newTransactionFilter(query url.Values) (*domain.TransactionFilter, error) {
-	senderID, err := parseUUID(query, "sender_id")
-	if err != nil {
-		return nil, err
-	}
-	receiverID, err := parseUUID(query, "receiver_id")
-	if err != nil {
-		return nil, err
-	}
-
-	minAmount := query.Get("min_amount")
-	maxAmount := query.Get("max_amount")
-
-	limit, err := strconv.Atoi(query.Get("limit"))
-	if err != nil {
-		return nil, fmt.Errorf("невалидный limit: %w", err)
-	}
-	offset, err := strconv.Atoi(query.Get("offset"))
-	if err != nil {
-		return nil, fmt.Errorf("невалидный offset: %w", err)
-	}
-
-	from, err := parseTime(query, "from")
-	if err != nil {
-		return nil, err
-	}
-
-	to, err := parseTime(query, "to")
-	if err != nil {
-		return nil, err
-	}
-
-	return &domain.TransactionFilter{
-		SenderID:   senderID,
-		ReceiverID: receiverID,
-		MinAmount:  minAmount,
-		MaxAmount:  maxAmount,
-		From:       from,
-		To:         to,
-		Limit:      limit,
-		Offset:     offset,
-	}, nil
-}
-
-func parseUUID(query url.Values, key string) (uuid.UUID, error) {
-	val := query.Get(key)
-	if val == "" {
-		return uuid.UUID{}, nil
-	}
-
-	id, err := uuid.Parse(val)
-	if err != nil {
-		return uuid.UUID{}, fmt.Errorf("невилдный %s", val)
-	}
-	return id, nil
-}
-
-func parseTime(query url.Values, key string) (time.Time, error) {
-	val := query.Get(key)
-	if val == "" {
-		return time.Time{}, nil
-	}
-
-	t, err := time.Parse("2006-01-02", val)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("невалидная дата %s: %w", key, err)
-	}
-
-	return t, nil
 }
 
 func status(id int) string {
@@ -126,7 +49,7 @@ func status(id int) string {
 
 // writeError пишет ошибку клиенту.
 // flag:  1 - полная ошибка, 0 - только часть
-func writeError(
+func WriteError(
 	w http.ResponseWriter,
 	code int,
 	err error,
@@ -145,32 +68,32 @@ func writeError(
 	json.NewEncoder(w).Encode(map[string]string{"error": status(code)})
 }
 
-func writeAuthError(w http.ResponseWriter, err error) {
+func WriteAuthError(w http.ResponseWriter, err error) {
 	switch {
 	//rate limit
 	case errors.Is(err, domain.ErrRateLimited):
-		writeError(w, http.StatusTooManyRequests, err, 0)
+		WriteError(w, http.StatusTooManyRequests, err, 0)
 	//аккаунт уже есть
 	case errors.Is(err, domain.ErrAccountAlreadyExist):
-		writeError(w, http.StatusConflict, err, 0)
+		WriteError(w, http.StatusConflict, err, 0)
 	//невалидные данные
 	case errors.Is(err, domain.ErrInvalidEmail),
 		errors.Is(err, domain.ErrInvalidPassword),
 		errors.Is(err, domain.ErrInvalidName):
-		writeError(w, http.StatusUnprocessableEntity, err, 0)
+		WriteError(w, http.StatusUnprocessableEntity, err, 0)
 	//невалидные креды
 	case errors.Is(err, domain.ErrInvalidCredentials),
 		errors.Is(err, domain.ErrInvalidRefreshToken),
 		errors.Is(err, domain.ErrRefreshTokenExpired),
 		errors.Is(err, domain.ErrRefreshTokenRevoked),
 		errors.Is(err, domain.ErrRefreshTokenReuse):
-		writeError(w, http.StatusUnauthorized, err, 0)
+		WriteError(w, http.StatusUnauthorized, err, 0)
 	default:
-		writeError(w, http.StatusInternalServerError, err, 0)
+		WriteError(w, http.StatusInternalServerError, err, 0)
 	}
 }
 
-func clientIP(r *http.Request) string {
+func ClientIP(r *http.Request) string {
 	host, _, err := net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
 	if err == nil {
 		return host
@@ -178,7 +101,7 @@ func clientIP(r *http.Request) string {
 	return strings.Trim(strings.TrimSpace(r.RemoteAddr), "[]")
 }
 
-func writeJSON(w http.ResponseWriter, code int, v any) error {
+func WriteJSON(w http.ResponseWriter, code int, v any) error {
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(v); err != nil {
 		w.Header().Add("Content-Type", "application/json")
@@ -191,7 +114,7 @@ func writeJSON(w http.ResponseWriter, code int, v any) error {
 	return err
 }
 
-func setAuthCookie(
+func SetAuthCookie(
 	w http.ResponseWriter,
 	path,
 	name,

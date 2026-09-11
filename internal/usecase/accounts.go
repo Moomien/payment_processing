@@ -2,7 +2,6 @@ package usecase
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"processing/internal/domain"
 	"processing/internal/infrastructure/logger"
@@ -10,10 +9,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-)
-
-var (
-	ErrInvalidEmail = errors.New("invalid email")
 )
 
 type AccountsService struct {

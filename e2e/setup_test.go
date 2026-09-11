@@ -9,13 +9,15 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
 
-	handlers "processing/internal/delivery/http"
+	httpapp "processing/internal/delivery/http/app"
 	jwtLayer "processing/internal/delivery/http/jwt"
 	"processing/internal/delivery/http/middleware"
+	httprouter "processing/internal/delivery/http/router"
 	"processing/internal/infrastructure/cache"
 	"processing/internal/infrastructure/config"
 	"processing/internal/infrastructure/logger"
@@ -41,6 +43,10 @@ type TestServer struct {
 func SetupTestServer(t *testing.T) *TestServer {
 	ctx := context.Background()
 
+	if _, err := exec.LookPath("docker"); err != nil {
+		t.Skip("e2e tests require Docker (Docker Desktop / Docker daemon) to be installed and running")
+	}
+
 	t.Setenv("accessSecretKey", "test-access-secret-key-for-testing-only")
 	t.Setenv("refreshSecretKey", "test-refresh-secret-key-for-testing-only")
 
@@ -55,7 +61,7 @@ func SetupTestServer(t *testing.T) *TestServer {
 				WithStartupTimeout(30*time.Second)),
 	)
 	if err != nil {
-		t.Fatalf("не удалось запустить postgres контейнер: %v", err)
+		t.Skipf("e2e tests require Docker to be running. Failed to start postgres container: %v", err)
 	}
 
 	connStr, err := postgresContainer.ConnectionString(ctx, "sslmode=disable")
@@ -114,21 +120,10 @@ func SetupTestServer(t *testing.T) *TestServer {
 	accountsService := usecase.NewAccountService(tx, testCache, testLogger)
 	authService := usecase.NewAuthService(tx, testCache, testLogger, jwtManager)
 
-	handler := handlers.NewHandler(transactionService, accountsService, authService, testLogger)
-
-	router := http.NewServeMux()
-
-	router.HandleFunc("POST /auth/register", handler.Register)
-	router.HandleFunc("POST /auth/login", handler.Login)
-	router.HandleFunc("POST /auth/refresh", handler.Refresh)
-
+	app := httpapp.NewApp(transactionService, accountsService, authService, testLogger)
 	auth := middleware.NewAuth(jwtManager)
-	router.Handle("POST /auth/logout", auth.Middleware(http.HandlerFunc(handler.Logout)))
-	router.Handle("POST /auth/logout-all", auth.Middleware(http.HandlerFunc(handler.LogoutAll)))
-	router.Handle("GET /accounts/{id}", auth.Middleware(http.HandlerFunc(handler.GetAccount)))
-	router.Handle("GET /accounts/{id}/transactions", auth.Middleware(http.HandlerFunc(handler.AccountTransactions)))
-	router.Handle("POST /transactions", auth.Middleware(http.HandlerFunc(handler.Transfer)))
-	router.Handle("GET /transactions/{id}", auth.Middleware(http.HandlerFunc(handler.GetTransaction)))
+
+	router := httprouter.New(app, auth)
 
 	server := httptest.NewServer(router)
 

@@ -1,4 +1,4 @@
-package handlers
+package httputil
 
 import (
 	"net/http/httptest"
@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestDecodeJSONRejectsUnknownFieldsMultipleObjectsAndLargeBodies(t *testing.T) {
+func TestDecodeJSON_Validation(t *testing.T) {
 	t.Parallel()
 
 	for _, tt := range []struct {
@@ -25,7 +25,7 @@ func TestDecodeJSONRejectsUnknownFieldsMultipleObjectsAndLargeBodies(t *testing.
 			var dst struct {
 				Known string `json:"known"`
 			}
-			require.Error(t, decodeJSON(rec, req, &dst))
+			require.Error(t, DecodeJSON(rec, req, &dst))
 		})
 	}
 }

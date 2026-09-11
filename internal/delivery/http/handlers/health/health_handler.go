@@ -1,15 +1,16 @@
-package handlers
+package health
 
 import (
 	"context"
 	"net/http"
+	"processing/internal/delivery/http/helpers/httputil"
 	"time"
 )
 
 type HealthCheck func(context.Context) error
 
 func Health(w http.ResponseWriter, _ *http.Request) {
-	if err := writeJSON(w, http.StatusOK, map[string]string{"status": "ok"}); err != nil {
+	if err := httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"}); err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 	}
 }
@@ -20,10 +21,10 @@ func Readiness(checks ...HealthCheck) http.HandlerFunc {
 		defer cancel()
 		for _, check := range checks {
 			if err := check(ctx); err != nil {
-				_ = writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "unavailable"})
+				_ = httputil.WriteJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "unavailable"})
 				return
 			}
 		}
-		_ = writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
+		_ = httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 	}
 }
